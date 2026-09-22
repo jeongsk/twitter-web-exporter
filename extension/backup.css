@@ -1,0 +1,129 @@
+* {
+  box-sizing: border-box;
+}
+:root {
+  color-scheme: light dark;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+body {
+  margin: 0;
+  background: #f6f7f9;
+  color: #17212b;
+  font-size: 15px;
+  line-height: 1.7;
+}
+main {
+  max-width: 800px;
+  padding: 40px 24px;
+  margin: auto;
+}
+header {
+  margin-bottom: 28px;
+}
+h1 {
+  margin: 4px 0;
+  font-size: 30px;
+}
+h2 {
+  margin: 0 0 14px;
+  font-size: 19px;
+}
+.eyebrow {
+  color: #536373;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+section {
+  background: #fff;
+  border: 1px solid #dce2e8;
+  border-radius: 14px;
+  padding: 24px;
+  margin: 18px 0;
+}
+label {
+  display: block;
+  font-weight: 600;
+  margin-top: 16px;
+}
+input:not([type='checkbox']),
+select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #b9c5d1;
+  border-radius: 7px;
+  font: inherit;
+  background: #fff;
+  color: inherit;
+}
+input:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: 3px solid #5e90d1;
+  outline-offset: 3px;
+}
+input[type='checkbox'] {
+  width: 17px;
+  height: 17px;
+  margin: 4px 9px 0 0;
+  flex-shrink: 0;
+}
+.check {
+  display: flex;
+  align-items: start;
+  font-size: 14px;
+}
+.hint,
+footer {
+  color: #586878;
+  font-size: 13px;
+}
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+button {
+  border: 0;
+  border-radius: 7px;
+  padding: 11px 15px;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: #275c88;
+  cursor: pointer;
+  margin-top: 12px;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+#error {
+  color: #a72d2d;
+  white-space: pre-wrap;
+}
+.path {
+  overflow-wrap: anywhere;
+  font-family: monospace;
+  font-size: 13px;
+}
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #171c22;
+    color: #e5edf5;
+  }
+  section,
+  input:not([type='checkbox']),
+  select {
+    background: #202831;
+    border-color: #445568;
+  }
+  .hint,
+  footer,
+  .eyebrow {
+    color: #b2c1d1;
+  }
+  #error {
+    color: #ffacac;
+  }
+}
