@@ -15,7 +15,14 @@
     "lint": "eslint .",
     "commitlint": "commitlint --edit",
     "changelog": "git-cliff -o CHANGELOG.md",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "build:chrome": "tsc --noEmit && node scripts/build-extension.mjs",
+    "package:chrome": "node scripts/package-extension.mjs",
+    "test": "pnpm build:chrome && playwright test",
+    "test:unit": "playwright test tests/unit.spec.ts",
+    "test:chrome": "playwright test tests/chrome.spec.ts",
+    "check:chrome": "pnpm typecheck && pnpm lint && pnpm test"
   },
   "dependencies": {
     "@preact/signals": "2.0.0",
@@ -33,7 +40,9 @@
     "@commitlint/cli": "^19.8.0",
     "@commitlint/config-conventional": "^19.8.0",
     "@eslint/js": "^9.23.0",
+    "@playwright/test": "^1.63.0",
     "@preact/preset-vite": "^2.10.1",
+    "@types/chrome": "^0.3.0",
     "@types/file-saver-es": "^2.0.3",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",

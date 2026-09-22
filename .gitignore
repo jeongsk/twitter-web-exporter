@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generated extension packages and test artifacts
+release/
+test-results/
+playwright-report/

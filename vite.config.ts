@@ -18,6 +18,7 @@ export default defineConfig({
     },
   },
   build: {
+    outDir: 'dist/userscript',
     minify: false,
   },
   css: {
