@@ -24,6 +24,16 @@
   <a href="https://github.com/prinsss/twitter-web-exporter/blob/main/docs/README.zh-Hans.md">简体中文</a>
 </p>
 
+## Chrome Extension (local build)
+
+This checkout also supports a self-contained Manifest V3 Chrome extension.
+Build with `pnpm build:chrome`, then load `dist/chrome` as an unpacked extension.
+Disable the original Twitter Web Exporter UserScript before using the extension.
+
+See [Chrome 설치·사용·개발 안내](docs/CHROME-EXTENSION.md) and
+[구현 결정 및 검증 기록](docs/CHROME-IMPLEMENTATION.md).
+The original UserScript build is preserved under `dist/userscript`.
+
 ## Features
 
 - 🚚 Export tweets, replies and likes of any user as JSON/CSV/HTML

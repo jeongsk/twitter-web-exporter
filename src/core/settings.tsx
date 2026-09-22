@@ -10,7 +10,7 @@ import {
   IconTrashX,
   IconReportAnalytics,
 } from '@tabler/icons-preact';
-import { GM_registerMenuCommand } from '$';
+import { openVaultBackup, registerMenuCommand, supportsVaultBackup } from '@/platform';
 
 import packageJson from '@/../package.json';
 import { Modal } from '@/components/common';
@@ -36,9 +36,14 @@ export function Settings() {
   };
 
   useEffect(() => {
-    GM_registerMenuCommand(`${t('Version')} ${packageJson.version}`, () => {
-      window.open(packageJson.homepage, '_blank');
-    });
+    registerMenuCommand(t('Settings'), toggleSettings, 'open-settings');
+    registerMenuCommand(
+      `${t('Version')} ${packageJson.version}`,
+      () => {
+        window.open(packageJson.homepage, '_blank', 'noopener,noreferrer');
+      },
+      'about',
+    );
   }, []);
 
   return (
@@ -67,7 +72,7 @@ export function Settings() {
             >
               {THEMES.map((theme) => (
                 <option key={theme} value={theme} selected={currentTheme.value === theme}>
-                  {capitalizeFirstLetter(theme)}
+                  {theme === 'system' ? t('System') : capitalizeFirstLetter(theme)}
                 </option>
               ))}
             </select>
@@ -75,6 +80,7 @@ export function Settings() {
           <label class={styles.item}>
             <span class="label-text whitespace-nowrap">{t('Language')}</span>
             <select
+              aria-label={t('Language')}
               class="select select-xs"
               onChange={(e) => {
                 const language = (e.target as HTMLSelectElement)?.value ?? detectBrowserLanguage();
@@ -147,6 +153,7 @@ export function Settings() {
               checked={options.get('dedicatedDbForAccounts')}
               onChange={(e) => {
                 options.set('dedicatedDbForAccounts', (e.target as HTMLInputElement)?.checked);
+                location.reload();
               }}
             />
           </label>
@@ -158,18 +165,21 @@ export function Settings() {
               <button
                 class="btn btn-xs btn-neutral mr-2"
                 onClick={async () => {
-                  let storageUsageText = 'Storage usage: N/A';
+                  let storageUsageText = t('Storage usage: unavailable');
                   if (typeof navigator.storage.estimate === 'function') {
                     const { quota = 1, usage = 0 } = await navigator.storage.estimate();
                     const usageMB = (usage / 1024 / 1024).toFixed(2);
                     const quotaMB = (quota / 1024 / 1024).toFixed(2);
-                    storageUsageText = `Storage usage: ${usageMB}MB / ${quotaMB}MB`;
+                    storageUsageText = t('Storage usage: {{usage}} MB / {{quota}} MB', {
+                      usage: usageMB,
+                      quota: quotaMB,
+                    });
                   }
 
                   const count = await db.count();
                   alert(
                     storageUsageText +
-                      '\n\nIndexedDB tables count:\n' +
+                      `\n\n${t('IndexedDB record counts')}:\n` +
                       JSON.stringify(count, undefined, '  '),
                   );
                 }}
@@ -246,6 +256,22 @@ export function Settings() {
             </div>
           </div>
         </div>
+        {supportsVaultBackup && (
+          <>
+            <p class={styles.subtitle}>Obsidian</p>
+            <div class={cx(styles.block, 'flex-col')}>
+              <button
+                class="btn btn-sm btn-primary"
+                onClick={() => void openVaultBackup().catch((error) => alert(error.message))}
+              >
+                {t('Obsidian Automatic Backup')}
+              </button>
+              <p class="text-xs mt-2">
+                {t('Configure secure local API backup in an extension-only window.')}
+              </p>
+            </div>
+          </>
+        )}
         {/* Enable or disable modules. */}
         <p class={styles.subtitle}>{t('Modules (Scroll to see more)')}</p>
         <div class={cx(styles.block, 'flex-col', 'max-h-44 overflow-scroll')}>

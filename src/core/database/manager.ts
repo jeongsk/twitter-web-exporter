@@ -1,4 +1,4 @@
-import { unsafeWindow } from '$';
+import { getAccountId, notifyTweetsCaptured } from '@/platform';
 import Dexie, { KeyPaths } from 'dexie';
 import { exportDB, importInto } from 'dexie-export-import';
 
@@ -32,8 +32,7 @@ export class DatabaseManager {
   private db: Dexie;
 
   constructor() {
-    const globalObject = unsafeWindow ?? window ?? globalThis;
-    const userId = globalObject.__META_DATA__?.userId ?? 'unknown';
+    const userId = getAccountId();
     const suffix = options.get('dedicatedDbForAccounts') ? `_${userId}` : '';
     logger.debug(`Using database: ${DB_NAME}${suffix} for userId: ${userId}`);
 
@@ -67,6 +66,17 @@ export class DatabaseManager {
 
   async extGetCaptures(extName: string) {
     return this.captures().where('extension').equals(extName).toArray().catch(this.logError);
+  }
+
+  async extGetBackupTweets(extName: string, offset: number, limit = 100) {
+    const captures = await this.captures()
+      .where('extension')
+      .equals(extName)
+      .offset(offset)
+      .limit(limit)
+      .toArray();
+    const tweets = await this.tweets().bulkGet(captures.map((c) => c.data_key));
+    return { count: captures.length, tweets: tweets.filter((t): t is Tweet => !!t?.legacy) };
   }
 
   async extGetCaptureCount(extName: string) {
@@ -137,6 +147,12 @@ export class DatabaseManager {
         created_at: Date.now() + i,
         sort_index: item.sortIndex,
       })),
+    );
+    void notifyTweetsCaptured(
+      extName,
+      sorted.map((item) => item.data),
+    ).catch((error) =>
+      logger.warn('Obsidian backup queue failed; retry from backup settings.', error),
     );
   }
 
