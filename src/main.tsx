@@ -46,6 +46,12 @@ extensions.add(RuntimeLogsModule);
 extensions.start();
 
 function mountApp() {
+  if (document.getElementById('twe-root')) {
+    console.warn(
+      '[twitter-web-exporter] Another instance is active. Disable the UserScript and reload.',
+    );
+    return;
+  }
   const root = document.createElement('div');
   root.id = 'twe-root';
   document.body.append(root);
