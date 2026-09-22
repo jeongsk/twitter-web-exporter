@@ -1,4 +1,9 @@
 export const LANGUAGES_CONFIG = {
+  ko: {
+    name: '한국어',
+    nameEn: 'Korean',
+    test: (code: string) => /^ko(?:-|$)/i.test(code),
+  },
   en: {
     name: 'English',
     nameEn: 'English',

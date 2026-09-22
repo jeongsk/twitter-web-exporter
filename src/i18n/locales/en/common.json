@@ -36,7 +36,6 @@
   "Export Data": "Export Data",
   "JSON View": "JSON View",
   "Media View": "Media View",
-
   "Bookmarks": "Bookmarks",
   "CommunityMembers": "CommunityMembers",
   "CommunityTimeline": "CommunityTimeline",
@@ -55,5 +54,11 @@
   "UserAbout": "UserAbout",
   "UserDetail": "UserDetail",
   "UserMedia": "UserMedia",
-  "UserTweets": "UserTweets"
+  "UserTweets": "UserTweets",
+  "System": "System",
+  "Storage usage: unavailable": "Storage usage: unavailable",
+  "Storage usage: {{usage}} MB / {{quota}} MB": "Storage usage: {{usage}} MB / {{quota}} MB",
+  "IndexedDB record counts": "IndexedDB record counts",
+  "Obsidian Automatic Backup": "Obsidian Automatic Backup",
+  "Configure secure local API backup in an extension-only window.": "Configure local API backup in an extension-only window."
 }

@@ -10,8 +10,7 @@ declare module 'virtual:i18next-loader' {
   };
 
   export type TranslationKey =
-    | keyof LocaleResources['en']['common']
-    | keyof LocaleResources['en']['exporter'];
+    keyof LocaleResources['en']['common'] | keyof LocaleResources['en']['exporter'];
 
   const resources: LocaleResources;
   export default resources;
