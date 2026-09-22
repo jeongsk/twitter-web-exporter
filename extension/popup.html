@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Twitter Web Exporter</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <img src="icons/icon32.png" width="32" height="32" alt="" />
+      <div>
+        <h1>Twitter Web Exporter</h1>
+        <span id="version"></span>
+      </div>
+    </header>
+    <p id="status" role="status">현재 탭을 확인하고 있습니다.</p>
+    <p id="counts"></p>
+    <button id="panel" disabled>제어판 열기 / 닫기</button>
+    <button id="settings" disabled>설정 및 데이터 백업</button>
+    <button id="backup">Obsidian 자동 백업</button>
+    <button id="bookmarks">X 북마크 열기</button>
+    <footer>
+      브라우저에 표시된 데이터만 수집합니다.<br />계정 비밀번호·API 키는 필요하지 않습니다.
+    </footer>
+    <script src="popup.js"></script>
+  </body>
+</html>
