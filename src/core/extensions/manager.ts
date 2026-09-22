@@ -1,18 +1,8 @@
-import { unsafeWindow } from '$';
+import { observeResponses } from '@/platform';
 import { options } from '@/core/options';
 import logger from '@/utils/logger';
 import { Signal } from '@preact/signals';
 import { Extension, ExtensionConstructor } from './extension';
-
-/**
- * Global object reference. In some cases, the `unsafeWindow` is not available.
- */
-const globalObject = unsafeWindow ?? window ?? globalThis;
-
-/**
- * The original XHR method backup.
- */
-const xhrOpen = globalObject.XMLHttpRequest.prototype.open;
 
 /**
  * The registry for all extensions.
@@ -107,51 +97,15 @@ export class ExtensionManager {
    * This need to be done before any XHR request is made.
    */
   private installHttpHooks() {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const manager = this;
-
-    globalObject.XMLHttpRequest.prototype.open = function (method: string, url: string) {
-      if (manager.debugEnabled) {
-        logger.debug(`XHR initialized`, { method, url });
-      }
-
-      // When the request is done, we call all registered interceptors.
-      this.addEventListener('load', () => {
-        if (manager.debugEnabled) {
-          logger.debug(`XHR finished`, { method, url });
+    observeResponses((request, response) => {
+      for (const ext of this.getExtensions()) {
+        if (!ext.enabled) continue;
+        try {
+          ext.intercept()?.(request, response, ext);
+        } catch (error) {
+          logger.error(`Interceptor failed: ${ext.name}`, error);
         }
-
-        // Run current enabled interceptors.
-        manager
-          .getExtensions()
-          .filter((ext) => ext.enabled)
-          .forEach((ext) => {
-            const func = ext.intercept();
-            if (func) {
-              func({ method, url }, this, ext);
-            }
-          });
-      });
-
-      // @ts-expect-error it's fine.
-      // eslint-disable-next-line prefer-rest-params
-      xhrOpen.apply(this, arguments);
-    };
-
-    logger.info('Hooked into XMLHttpRequest');
-
-    // Check for current execution context.
-    // The `webpackChunk_twitter_responsive_web` is injected by the Twitter website.
-    // See: https://violentmonkey.github.io/posts/inject-into-context/
-    setTimeout(() => {
-      if (!('webpackChunk_twitter_responsive_web' in globalObject)) {
-        logger.error(
-          'Error: Wrong execution context detected.\n  ' +
-            'This script needs to be injected into "page" context rather than "content" context.\n  ' +
-            'The XMLHttpRequest hook will not work properly.\n  ' +
-            'See: https://github.com/prinsss/twitter-web-exporter/issues/19',
-        );
       }
-    }, 1000);
+    });
   }
 }

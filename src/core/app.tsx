@@ -2,7 +2,7 @@ import { Fragment } from 'preact';
 import { useEffect } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import { IconBrandTwitterFilled, IconX } from '@tabler/icons-preact';
-import { GM_registerMenuCommand } from '$';
+import { registerMenuCommand } from '@/platform';
 
 import { ErrorBoundary } from '@/components/error-boundary';
 import { CatIcon } from '@/components/common';
@@ -37,7 +37,7 @@ export function App() {
       currentTheme.value = options.get('theme');
     });
 
-    GM_registerMenuCommand(t('Open Control Panel'), toggleControlPanel);
+    registerMenuCommand(t('Open Control Panel'), toggleControlPanel, 'toggle-panel');
 
     logger.debug('App useEffect executed');
   }, []);

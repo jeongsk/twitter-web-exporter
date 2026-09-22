@@ -41,7 +41,7 @@ export function extractDataFromResponse<
   T extends User | Tweet,
   P extends TimelineUser | TimelineTweet = T extends User ? TimelineUser : TimelineTweet,
 >(
-  response: XMLHttpRequest,
+  response: Pick<XMLHttpRequest, 'status' | 'responseText'>,
   extractInstructionsFromJson: (json: R) => TimelineInstructions,
   extractDataFromTimelineEntry: (entry: TimelineEntry<P, TimelineTimelineItem<P>>) => T | null,
 ): WithSortIndex<T>[] {

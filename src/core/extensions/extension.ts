@@ -15,7 +15,7 @@ export type ExtensionUIComponentType = ComponentType<{ extension: Extension }> |
  */
 export type Interceptor = (
   request: Pick<Request, 'method' | 'url'>,
-  response: XMLHttpRequest,
+  response: Pick<XMLHttpRequest, 'status' | 'responseText'>,
   extension: Extension,
 ) => void;
 
