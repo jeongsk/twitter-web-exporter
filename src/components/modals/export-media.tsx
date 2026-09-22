@@ -76,7 +76,12 @@ export function ExportMediaModal<T>({
   const onExport = async () => {
     try {
       setLoading(true);
-      await zipStreamDownload(`twitter-${title}-${Date.now()}-media.zip`, mediaList, onProgress);
+      await zipStreamDownload(
+        `twitter-${title}-${Date.now()}-media.zip`,
+        mediaList,
+        onProgress,
+        rateLimit,
+      );
       setLoading(false);
     } catch (err) {
       setLoading(false);
@@ -164,7 +169,7 @@ export function ExportMediaModal<T>({
             value={rateLimit}
             onChange={(e) => {
               const value = parseInt((e?.target as HTMLInputElement)?.value);
-              setRateLimit(value || 0);
+              setRateLimit(Math.min(60000, Math.max(0, value || 0)));
             }}
           />
           <p class="leading-8 col-span-1 whitespace-nowrap sm:pl-2">{t('Use aria2 format:')}</p>

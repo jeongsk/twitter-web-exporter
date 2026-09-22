@@ -48,6 +48,9 @@ export async function zipStreamDownload(
         logger.debug(`Start downloading ${filename} from ${url}`);
         return fetch(url)
           .then((res) => {
+            if (!res.ok || !res.body) {
+              throw new Error(`Download failed (${res.status}): ${filename}`);
+            }
             ctrl.enqueue({
               name: filename,
               stream: () => res.body,

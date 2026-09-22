@@ -1,4 +1,4 @@
-import { JSX } from 'preact';
+import type { ComponentChildren } from 'preact';
 import { useRef } from 'preact/hooks';
 import { IconArrowUpRight, IconSearch, IconX } from '@tabler/icons-preact';
 
@@ -16,7 +16,7 @@ type ExtensionPanelProps = {
   description: string;
   active?: boolean;
   onClick?: () => void;
-  children?: JSX.Element | JSX.Element[];
+  children?: ComponentChildren;
   indicatorColor?: string;
 };
 
@@ -65,7 +65,7 @@ export function ExtensionPanel({
 type ModalProps = {
   show?: boolean;
   onClose?: () => void;
-  children?: JSX.Element | JSX.Element[];
+  children?: ComponentChildren;
   title?: string;
   class?: string;
 };

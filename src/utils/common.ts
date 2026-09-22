@@ -62,7 +62,12 @@ export function capitalizeFirstLetter(str: string) {
 }
 
 export function xssFilter(str: string) {
-  return str.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 /**
@@ -85,16 +90,18 @@ export function xssFilter(str: string) {
  * ```
  */
 export function strEntitiesToHTML(str: string, urls?: EntityURL[]) {
-  let temp = str;
+  let temp = xssFilter(str ?? '');
 
   if (!urls?.length) {
     return temp;
   }
 
   for (const { url, display_url, expanded_url } of urls) {
+    const href = expanded_url ?? url;
+    if (!/^https?:\/\//i.test(href)) continue;
     temp = temp.replaceAll(
-      url,
-      `<a class="link" target="_blank" href="${xssFilter(expanded_url ?? url)}">${xssFilter(
+      xssFilter(url),
+      `<a class="link" target="_blank" rel="noopener noreferrer" href="${xssFilter(expanded_url ?? url)}">${xssFilter(
         display_url ?? url,
       )}</a>`,
     );

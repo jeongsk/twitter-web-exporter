@@ -133,7 +133,7 @@ export async function htmlExporter(data: DataType[], translations: Record<string
         }
       } else if (exportKey === 'full_text' || exportKey === 'description') {
         const p = document.createElement('p');
-        p.innerHTML = value;
+        p.textContent = value == null ? '' : String(value);
         p.style.whiteSpace = 'pre-wrap';
         p.style.maxWidth = '640px';
         td.appendChild(p);
@@ -173,7 +173,7 @@ export async function htmlExporter(data: DataType[], translations: Record<string
       <head>
         <meta charset="utf-8">
         <title>Exported Data ${new Date().toISOString()}</title>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+        <style>body{font:14px/1.5 system-ui,sans-serif;margin:24px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px;text-align:left;vertical-align:top}thead{background:#eee}tr:nth-child(even){background:#fafafa}img{max-width:100%}a{color:#175bb0}</style>
       </head>
       <body>
         ${table.outerHTML}
