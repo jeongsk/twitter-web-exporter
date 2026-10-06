@@ -38,6 +38,12 @@ export function captureRecord(tweet: Tweet): BackupRecord | null {
       alt: m.ext_alt_text ?? '',
     })),
     related,
+    ...(tweet.legacy?.in_reply_to_status_id_str
+      ? { replyTo: tweet.legacy.in_reply_to_status_id_str }
+      : {}),
+    ...(tweet.legacy?.conversation_id_str
+      ? { conversationId: tweet.legacy.conversation_id_str }
+      : {}),
   };
   return isBackupRecord(record) ? record : null;
 }

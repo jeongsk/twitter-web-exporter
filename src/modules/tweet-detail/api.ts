@@ -1,18 +1,7 @@
 import { Interceptor } from '@/core/extensions';
 import { db } from '@/core/database';
-import {
-  TimelineAddEntriesInstruction,
-  TimelineAddToModuleInstruction,
-  TimelineInstructions,
-  TimelineTweet,
-  Tweet,
-  WithSortIndex,
-} from '@/types';
-import {
-  extractTimelineTweet,
-  isTimelineEntryConversationThread,
-  isTimelineEntryTweet,
-} from '@/utils/api';
+import type { TimelineInstructions } from '@/types';
+import { extractTweetDetail } from './extract';
 import logger from '@/utils/logger';
 
 interface TweetDetailResponse {
@@ -60,54 +49,7 @@ export const TweetDetailInterceptor: Interceptor = (req, res, ext) => {
         .timeline.instructions;
     }
 
-    const newData: WithSortIndex<Tweet>[] = [];
-
-    const timelineAddEntriesInstruction = instructions.find(
-      (i) => i.type === 'TimelineAddEntries',
-    ) as TimelineAddEntriesInstruction<TimelineTweet>;
-
-    // When loading more tweets in conversation, the "TimelineAddEntries" instruction may not exist.
-    const timelineAddEntriesInstructionEntries = timelineAddEntriesInstruction?.entries ?? [];
-
-    for (const entry of timelineAddEntriesInstructionEntries) {
-      // The main tweet.
-      if (isTimelineEntryTweet(entry)) {
-        const tweet = extractTimelineTweet(entry.content.itemContent);
-        if (tweet) {
-          newData.push({ data: tweet, sortIndex: entry.sortIndex });
-        }
-      }
-
-      // The conversation thread (only for TweetDetail).
-      if (isTweetDetail && isTimelineEntryConversationThread(entry)) {
-        // Be careful about the "conversationthread-{id}-cursor-showmore-{cid}" item.
-        const tweetsInConversation = entry.content.items
-          .map((i) => {
-            if (i.entryId.includes('-tweet-')) {
-              return extractTimelineTweet(i.item.itemContent);
-            }
-          })
-          .filter((t): t is Tweet => !!t)
-          .map((t) => ({ data: t, sortIndex: entry.sortIndex }));
-
-        newData.push(...tweetsInConversation);
-      }
-    }
-
-    // Lazy-loaded conversations.
-    const timelineAddToModuleInstruction = instructions.find(
-      (i) => i.type === 'TimelineAddToModule',
-    ) as TimelineAddToModuleInstruction<TimelineTweet>;
-
-    if (timelineAddToModuleInstruction) {
-      const tweetsInConversation = timelineAddToModuleInstruction.moduleItems
-        .map((i) => extractTimelineTweet(i.item.itemContent))
-        .filter((t): t is Tweet => !!t)
-        // No sortIndex available from TimelineAddToModule.
-        .map((t) => ({ data: t, sortIndex: undefined }));
-
-      newData.push(...tweetsInConversation);
-    }
+    const newData = extractTweetDetail(instructions);
 
     // Add captured tweets to the database.
     db.extAddTweets(ext.name, newData);

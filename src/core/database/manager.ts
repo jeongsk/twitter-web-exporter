@@ -12,7 +12,7 @@ import { ExtensionType } from '../extensions';
 import { options } from '../options';
 
 const DB_NAME = packageJson.name;
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 declare global {
   interface Window {
@@ -77,6 +77,23 @@ export class DatabaseManager {
       .toArray();
     const tweets = await this.tweets().bulkGet(captures.map((c) => c.data_key));
     return { count: captures.length, tweets: tweets.filter((t): t is Tweet => !!t?.legacy) };
+  }
+
+  async getBackupTweets(ids: string[]) {
+    return (await this.tweets().bulkGet(ids)).filter((t): t is Tweet => !!t?.legacy);
+  }
+
+  async getBookmarkedBackupIds(ids: string[]) {
+    const captures = await this.captures().bulkGet(ids.map((id) => `BookmarksModule-${id}`));
+    return captures.filter((c): c is Capture => !!c).map((c) => c.data_key);
+  }
+
+  async getBackupChildren(parentIds: string[], limit: number) {
+    return this.tweets()
+      .where('legacy.in_reply_to_status_id_str')
+      .anyOf(parentIds)
+      .limit(limit)
+      .toArray();
   }
 
   async extGetCaptureCount(extName: string) {
@@ -420,8 +437,19 @@ export class DatabaseManager {
         });
 
       // v3: adds sort_index index to captures for timeline ordering.
-      this.db.version(DB_VERSION).stores({
+      this.db.version(3).stores({
         tweets: tweetIndexPaths.join(','),
+        users: userIndexPaths.join(','),
+        captures: captureIndexPaths.join(','),
+      });
+
+      // v4: add reply indexes without changing older schemas or deleting existing records.
+      this.db.version(DB_VERSION).stores({
+        tweets: [
+          ...tweetIndexPaths,
+          'legacy.in_reply_to_status_id_str',
+          'legacy.conversation_id_str',
+        ].join(','),
         users: userIndexPaths.join(','),
         captures: captureIndexPaths.join(','),
       });

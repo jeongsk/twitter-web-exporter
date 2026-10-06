@@ -1,8 +1,10 @@
+import { isThreadsPage, THREADS_SAVED } from '@/threads/model';
 import { isXPage } from './protocol';
 import type { MenuAction } from '@/platform/types';
 
 type Status = {
   ready?: boolean;
+  source?: 'threads';
   error?: string;
   dropped?: number;
   counts?: { tweets: number; users: number; captures: number } | null;
@@ -32,8 +34,8 @@ document.getElementById('version')!.textContent = `v${chrome.runtime.getManifest
 
 void (async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab?.id === undefined || !isXPage(tab.url ?? '')) {
-    status.textContent = 'X 페이지에서 사용할 수 있습니다. 북마크를 열어 시작하세요.';
+  if (tab?.id === undefined || (!isXPage(tab.url ?? '') && !isThreadsPage(tab.url ?? ''))) {
+    status.textContent = 'X 또는 Threads에서 사용할 수 있습니다. 저장 목록을 열어 시작하세요.';
     return;
   }
   tabId = tab.id;
@@ -44,19 +46,28 @@ void (async () => {
       (result.ready
         ? '수집 준비 완료 · 페이지를 스크롤해 데이터를 모으세요.'
         : '제어판 준비 중입니다. 잠시 후 다시 열어주세요.');
-    panelButton.disabled = settingsButton.disabled = !result.ready;
+    panelButton.disabled = !result.ready;
+    settingsButton.disabled = !result.ready;
     if (result.counts) {
-      count.textContent = `게시물 ${result.counts.tweets.toLocaleString()} · 사용자 ${result.counts.users.toLocaleString()}`;
+      count.textContent =
+        result.source === 'threads'
+          ? `Threads 저장 게시물 ${result.counts.tweets.toLocaleString()}`
+          : `게시물 ${result.counts.tweets.toLocaleString()} · 사용자 ${result.counts.users.toLocaleString()}`;
     }
     if (result.dropped)
       status.textContent += ` 누락된 응답 ${result.dropped}개: 페이지를 다시 조회하세요.`;
   } catch {
-    status.textContent = '확장 프로그램을 설치·업데이트한 뒤에는 열린 X 탭을 새로고침하세요.';
+    status.textContent =
+      '확장 프로그램을 설치·업데이트한 뒤에는 열린 X·Threads 탭을 새로고침하세요.';
   }
 })().catch(() => {
-  status.textContent = '현재 탭을 확인하지 못했습니다. X 페이지에서 다시 열어주세요.';
+  status.textContent = '현재 탭을 확인하지 못했습니다. X 또는 Threads 페이지에서 다시 열어주세요.';
 });
 
 document.getElementById('backup')!.addEventListener('click', () => {
   void chrome.runtime.openOptionsPage();
+});
+
+document.getElementById('threads-saved')!.addEventListener('click', () => {
+  void chrome.tabs.create({ url: THREADS_SAVED });
 });

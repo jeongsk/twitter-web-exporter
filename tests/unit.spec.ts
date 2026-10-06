@@ -36,7 +36,7 @@ test('Manifest V3 package is self-contained with narrow permissions', () => {
   const dir = resolve('dist/chrome');
   const manifest = JSON.parse(readFileSync(resolve(dir, 'manifest.json'), 'utf8'));
   expect(manifest.manifest_version).toBe(3);
-  expect(manifest.permissions).toEqual(['activeTab', 'storage', 'alarms']);
+  expect(manifest.permissions).toEqual(['activeTab', 'storage', 'alarms', 'notifications']);
   expect(manifest.optional_host_permissions).toEqual([
     'https://127.0.0.1/*',
     'https://localhost/*',
@@ -48,13 +48,19 @@ test('Manifest V3 package is self-contained with narrow permissions', () => {
   expect(manifest.content_scripts.map((s: { world: string }) => s.world)).toEqual([
     'ISOLATED',
     'MAIN',
+    'ISOLATED',
   ]);
   for (const s of manifest.content_scripts) {
-    expect(s.run_at).toBe('document_start');
+    expect(s.run_at).toBe(s.js.includes('threads-content.js') ? 'document_idle' : 'document_start');
     expect(s.matches).not.toContain('<all_urls>');
     for (const file of [...s.js, ...(s.css ?? [])])
       expect(existsSync(resolve(dir, file))).toBe(true);
   }
+  expect(
+    manifest.content_scripts.find((entry: { js: string[] }) =>
+      entry.js.includes('threads-content.js'),
+    ).css,
+  ).toEqual(['app.css']);
   expect(existsSync(resolve(dir, 'app.js'))).toBe(true);
   expect(existsSync(resolve(dir, 'THIRD_PARTY_NOTICES.txt'))).toBe(true);
   const app = readFileSync(resolve(dir, 'app.js'), 'utf8');

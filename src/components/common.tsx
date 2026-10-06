@@ -18,6 +18,7 @@ type ExtensionPanelProps = {
   onClick?: () => void;
   children?: ComponentChildren;
   indicatorColor?: string;
+  actionLabel?: string;
 };
 
 /**
@@ -30,6 +31,7 @@ export function ExtensionPanel({
   onClick,
   active,
   indicatorColor = 'bg-secondary',
+  actionLabel,
 }: ExtensionPanelProps) {
   return (
     <section class="module-panel">
@@ -50,7 +52,7 @@ export function ExtensionPanel({
           <p class="text-base m-0 font-medium leading-none">{title}</p>
           <p class="text-sm text-base-content leading-5 text-opacity-70 m-0">{description}</p>
         </div>
-        <button class="btn btn-sm p-0 w-9 h-9" onClick={onClick}>
+        <button class="btn btn-sm p-0 w-9 h-9" aria-label={actionLabel} onClick={onClick}>
           <IconArrowUpRight />
         </button>
       </div>

@@ -1,6 +1,7 @@
 import { CHANNEL, MAX_BUFFER_CHARS, isCapturePacket, normalizeAccountId } from './protocol';
 import type { MenuAction } from '@/platform/types';
 import type { BridgeState } from './state';
+import { bookmarkIds, runAutoCollect } from '@/backup/auto-collect';
 
 /** ISOLATED world bootstrap. Start buffering before loading the much larger UI bundle. */
 const state: BridgeState = {
@@ -16,6 +17,8 @@ const state: BridgeState = {
 window.__TWE_CHROME_BRIDGE__ = state;
 let started = false;
 let domReady = document.readyState !== 'loading';
+/** Bookmark tweet ids seen by this tab, newest first. Used only by periodic collection. */
+const bookmarks = new Set<string>();
 
 function startApp() {
   if (started || !domReady || !state.hookReady) return;
@@ -42,6 +45,8 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
     return;
   }
   if (!isCapturePacket(data)) return;
+  if (new URL(data.url).pathname.endsWith('/Bookmarks'))
+    bookmarkIds(data.responseText).forEach((id) => bookmarks.add(id));
   if (!started && data.accountId !== 'unknown') state.accountId = data.accountId;
   // A SPA account switch must not mix records into the previous account's database.
   if (started && data.accountId !== 'unknown' && data.accountId !== state.accountId) {
@@ -71,17 +76,28 @@ function hello() {
     location.origin,
   );
 }
+function autoCollect() {
+  // Only the inactive tab opened by the worker's periodic collection gets `auto: true`.
+  setTimeout(() => {
+    void runAutoCollect(
+      async (request) => (await chrome.runtime.sendMessage(request)) ?? {},
+      () => [...bookmarks],
+    ).catch((error: unknown) => console.warn('[twitter-web-exporter] 자동 수집 중단', error));
+  }, 1500);
+}
 if (!domReady) {
   document.addEventListener(
     'DOMContentLoaded',
     () => {
       domReady = true;
       hello();
+      autoCollect();
     },
     { once: true },
   );
 } else {
   hello();
+  autoCollect();
 }
 hello();
 setTimeout(() => {

@@ -21,6 +21,8 @@ export function isBackupRecord(value: unknown): value is BackupRecord {
   if (!recordObject(value)) return false;
   return (
     id(value.id) &&
+    (value.replyTo === undefined || (id(value.replyTo) && value.replyTo !== value.id)) &&
+    (value.conversationId === undefined || id(value.conversationId)) &&
     text(value.text, 100000) &&
     handle(value.screenName) &&
     text(value.name, 500) &&
@@ -112,9 +114,10 @@ export function noteBody(record: BackupRecord): string {
   }
   return parts.join('\n').trimEnd() + '\n';
 }
-export async function fingerprint(body: string): Promise<string> {
+export async function fingerprint(body: string, maxBytes = 512 * 1024): Promise<string> {
   const bytes = new TextEncoder().encode(body);
-  if (bytes.length > 512 * 1024) throw new Error('한 게시물의 백업 크기가 512 KiB를 초과합니다.');
+  if (bytes.length > maxBytes)
+    throw new Error(`백업 크기가 ${Math.round(maxBytes / 1024)} KiB를 초과합니다.`);
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return [...new Uint8Array(digest)].map((x) => x.toString(16).padStart(2, '0')).join('');
 }

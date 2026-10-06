@@ -1,10 +1,12 @@
+import { MAX_THREAD_BYTES } from './types';
+import { BackupConnectionError } from './connection-errors';
 import { fingerprint } from './format';
 import type { BackupJob } from './queue';
 
 export type ApiSettings = { endpoint: string; apiKey: string; folder: string };
 export const DEFAULT_ENDPOINT = 'https://127.0.0.1:27124';
 export const DEFAULT_FOLDER = 'raw/articles/twitter-web-exporter';
-const MAX_RESPONSE_BYTES = 750 * 1024;
+const MAX_RESPONSE_BYTES = MAX_THREAD_BYTES + 64 * 1024;
 
 /** Restrict credentials to literal loopback hosts, explicit ports, and no redirects. */
 export function normalizeEndpoint(value: unknown): string {
@@ -103,16 +105,42 @@ export class ObsidianRestClient {
           },
         });
       } catch {
-        throw new Error(
-          'Obsidian API에 연결할 수 없습니다. 앱 실행·포트·로컬 접근 권한·HTTPS 인증서를 확인하세요.',
+        if (controller.signal.aborted)
+          throw new BackupConnectionError(
+            'Obsidian API 응답 시간이 10초를 초과했습니다. Obsidian 실행 상태와 API 주소·포트를 확인한 뒤 다시 시도하세요.',
+            'TIMEOUT',
+          );
+        // Fetch deliberately hides TLS details. Do not label every network failure a certificate error.
+        const secure = this.settings.endpoint.startsWith('https:');
+        throw new BackupConnectionError(
+          secure
+            ? 'HTTPS 연결에 실패했습니다. Obsidian이 실행 중인지와 API 주소·포트를 확인하세요. 아래 「API 상태 페이지 열기」에서 인증서 오류가 표시되면 Local REST API의 CA 인증서를 신뢰 등록해야 합니다.'
+            : '로컬 API에 연결할 수 없습니다. Obsidian이 실행 중인지와 API 주소·포트를 확인하세요. HTTP는 플러그인에서 직접 활성화한 경우에만 사용할 수 있습니다.',
+          secure ? 'TLS_OR_NETWORK' : 'NETWORK',
         );
       }
       if ([401, 403].includes(response.status))
-        throw new Error('Obsidian API 인증에 실패했습니다. API 키와 플러그인 설정을 확인하세요.');
+        throw new BackupConnectionError(
+          'Obsidian API 인증에 실패했습니다. 대상 볼트의 Local REST API 설정에서 API 키를 다시 복사해 입력하세요.',
+          'AUTH',
+        );
       if (response.status === 404 && method === 'GET') return null;
-      if (!response.ok) throw new Error(`Obsidian API 요청 실패 (HTTP ${response.status}).`);
+      if (!response.ok)
+        throw new BackupConnectionError(
+          `Obsidian API 요청 실패 (HTTP ${response.status}). 플러그인 상태를 확인한 뒤 다시 시도하세요.`,
+          'HTTP',
+        );
       // Never include the response body in logs/errors: an endpoint could reflect the API key.
-      return await responseText(response);
+      try {
+        return await responseText(response);
+      } catch {
+        throw new BackupConnectionError(
+          controller.signal.aborted
+            ? 'Obsidian API 응답 읽기가 10초를 초과했습니다. 앱 상태를 확인한 뒤 다시 시도하세요.'
+            : 'Obsidian API 응답을 읽지 못했습니다. 연결이 중단되었거나 응답 크기가 너무 큽니다.',
+          controller.signal.aborted ? 'TIMEOUT' : 'RESPONSE',
+        );
+      }
     } finally {
       clearTimeout(timer);
     }
@@ -123,19 +151,40 @@ export class ObsidianRestClient {
   }
   async connect() {
     const raw = await this.request('/');
-    let data: { service?: string; authenticated?: boolean; versions?: { self?: string } };
+    let parsed: unknown;
     try {
-      data = JSON.parse(raw ?? '');
+      parsed = JSON.parse(raw ?? '');
     } catch {
-      throw new Error('Obsidian Local REST API 상태 응답이 아닙니다.');
+      throw new BackupConnectionError(
+        'Obsidian Local REST API 상태 응답이 아닙니다. API 주소·포트를 확인하세요.',
+        'RESPONSE',
+      );
     }
-    if (data.authenticated !== true || !data.service?.startsWith('Obsidian Local REST API'))
-      throw new Error('Obsidian API 인증 상태를 확인하지 못했습니다.');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+      throw new BackupConnectionError(
+        'Obsidian Local REST API 상태 응답이 아닙니다. API 주소·포트를 확인하세요.',
+        'RESPONSE',
+      );
+    const data = parsed as {
+      service?: unknown;
+      authenticated?: unknown;
+      versions?: { self?: unknown };
+    };
+    if (typeof data.service !== 'string' || !data.service.startsWith('Obsidian Local REST API'))
+      throw new BackupConnectionError(
+        '연결된 서버가 Obsidian Local REST API가 아닙니다. API 주소·포트를 확인하세요.',
+        'RESPONSE',
+      );
+    if (data.authenticated !== true)
+      throw new BackupConnectionError(
+        '서버에는 연결했지만 API 키 인증에 실패했습니다. 대상 볼트의 Local REST API 설정에서 키를 다시 복사해 입력하세요.',
+        'AUTH',
+      );
     return {
       ok: true as const,
       endpoint: this.settings.endpoint,
       folder: this.settings.folder,
-      pluginVersion: data.versions?.self ?? '',
+      pluginVersion: typeof data.versions?.self === 'string' ? data.versions.self : '',
       destinationId: await apiDestination(this.settings),
     };
   }
@@ -146,27 +195,38 @@ export class ObsidianRestClient {
     const front = existing.slice(4, boundary).split('\n');
     return (
       front.includes('generator: "twitter-web-exporter"') &&
-      front.includes(`source_id: "${job.id}"`) &&
-      (await fingerprint(existing.slice(boundary + 5))) === job.hash
+      (job.platform === 'threads'
+        ? front.includes('source_platform: "threads"') &&
+          front.includes(`source_key: "threads-${job.id}"`)
+        : front.includes(`source_id: "${job.id}"`)) &&
+      (await fingerprint(
+        existing.slice(boundary + 5),
+        job.kind === 'thread' ? MAX_THREAD_BYTES : 512 * 1024,
+      )) === job.hash
     );
   }
   async write(job: BackupJob) {
     if (
-      !/^\d{1,30}$/.test(job.id) ||
+      !(job.platform === 'threads'
+        ? /^(?:[0-9a-f]{2}){1,32}$/.test(job.id)
+        : /^\d{1,30}$/.test(job.id)) ||
       !/^[a-f0-9]{64}$/.test(job.hash) ||
       typeof job.markdown !== 'string' ||
-      job.markdown.length > 600 * 1024 ||
+      new TextEncoder().encode(job.markdown).length >
+        (job.kind === 'thread' ? MAX_THREAD_BYTES : 600 * 1024) ||
       !(await this.matches(job.markdown, job))
     )
       throw new Error('백업 작업의 ID 또는 체크섬이 올바르지 않습니다.');
     if (job.target !== (await apiDestination(this.settings)))
       throw new Error('백업 저장 위치가 변경되었습니다.');
-    const base = `${this.settings.folder}/x-${job.id}.md`;
+    const folder =
+      job.platform === 'threads' ? `${this.settings.folder}/threads` : this.settings.folder;
+    const prefix = job.platform === 'threads' ? 'threads' : 'x';
+    const base = `${folder}/${prefix}-${job.id}.md`;
     const old = await this.request(this.fileUrl(base));
     if (old !== null && (await this.matches(old, job)))
       return { path: base, result: 'existing' as const };
-    const path =
-      old === null ? base : `${this.settings.folder}/revisions/x-${job.id}-${job.hash}.md`;
+    const path = old === null ? base : `${folder}/revisions/${prefix}-${job.id}-${job.hash}.md`;
     if (old !== null) {
       const revision = await this.request(this.fileUrl(path));
       if (revision !== null) {

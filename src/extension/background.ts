@@ -1,3 +1,7 @@
+import { queueThreads } from '@/threads/queue';
+import { isThreadsPage } from '@/threads/model';
+import { queueThread } from '@/backup/thread-queue';
+import { BackupConnectionError } from '@/backup/connection-errors';
 import { BackupDatabase, type BackupJob } from '@/backup/queue';
 import { isBackupRecord, renderNote } from '@/backup/format';
 import { acceptsModule, type BackupConfig, type BackupStatus } from '@/backup/types';
@@ -12,13 +16,53 @@ import {
   type ApiSettings,
 } from '@/backup/rest';
 import { saveApiSettings } from '@/backup/settings-handler';
+import {
+  AUTO_INTERVALS,
+  AUTO_SOURCES,
+  AUTO_TIMEOUT,
+  autoStep,
+  knownFromJobKeys,
+  mergeKnown,
+  normalizeInterval,
+  type AutoPlatform,
+  type AutoRunResult,
+  type AutoSession,
+  type AutoStopReason,
+} from '@/backup/auto-collect';
 import { isXPage } from './protocol';
 
 const db = new BackupDatabase();
 const ALARM = 'twe-vault-backup-retry';
+const AUTO_ALARM = 'twe-auto-collect';
+const AUTO_WATCHDOG = 'twe-auto-collect-watchdog';
+const AUTO_CONFIG_KEY = 'autoCollectConfig';
+const AUTO_KNOWN_KEY = 'autoCollectKnown';
+const AUTO_RESULT_KEY = 'autoCollectLastRun';
+const AUTO_RUN_KEY = 'autoCollectRun';
+const OFFLINE_NOTIFICATION = 'twe-obsidian-offline';
+const OFFLINE_CODES = new Set(['NETWORK', 'TLS_OR_NETWORK', 'TIMEOUT']);
+const OFFLINE_NOTIFY_AFTER = 60 * 60 * 1000;
+const PROBE_INTERVAL = 5 * 60 * 1000;
 const CONFIG_KEY = 'vaultBackupConfig';
 const READY = chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
 let running: Promise<void> | undefined;
+let threadIngest: Promise<unknown> = Promise.resolve();
+function enqueueThreads(bundle: unknown) {
+  const result = threadIngest.then(async () => queueThreads(db, bundle, await config()));
+  threadIngest = result.catch(() => {});
+  return result.then((reply) => {
+    void drain().catch(reportError);
+    return reply;
+  });
+}
+function enqueueThread(bundle: unknown) {
+  const result = threadIngest.then(async () => queueThread(db, bundle, await config()));
+  threadIngest = result.catch(() => {});
+  return result.then((reply) => {
+    void drain().catch(reportError);
+    return reply;
+  });
+}
 interface StoredConfig {
   vaultBackupConfig?: Partial<BackupConfig>;
   vaultBackupApi?: ApiSettings;
@@ -28,12 +72,16 @@ interface BackupMeta {
   lastBackupSuccess?: number;
   lastBackupPath?: string;
   backupPluginVersion?: string;
+  disconnectedSince?: number;
+  disconnectNotified?: boolean;
+  lastProbeAt?: number;
 }
 async function config(): Promise<BackupConfig> {
   await READY;
   const value = (await chrome.storage.local.get<StoredConfig>(CONFIG_KEY))[CONFIG_KEY];
   return {
     enabled: value?.enabled === true,
+    threadsEnabled: value?.threadsEnabled === true,
     scope: value?.scope === 'tweets' ? 'tweets' : 'bookmarks',
     destinationId: typeof value?.destinationId === 'string' ? value.destinationId : '',
   };
@@ -63,7 +111,9 @@ async function status(): Promise<BackupStatus> {
     'lastBackupSuccess',
     'lastBackupPath',
     'backupPluginVersion',
+    'disconnectedSince',
   ]);
+  const auto = await autoStatus();
   return {
     ok: true,
     config: cfg,
@@ -88,6 +138,8 @@ async function status(): Promise<BackupStatus> {
       hasApiKey: !!api?.apiKey,
       pluginVersion: typeof meta.backupPluginVersion === 'string' ? meta.backupPluginVersion : '',
     },
+    disconnectedSince: typeof meta.disconnectedSince === 'number' ? meta.disconnectedSince : 0,
+    autoCollect: auto,
   };
 }
 async function reportError(error: unknown) {
@@ -141,7 +193,13 @@ async function flush() {
     const job = await db.jobs
       .where('[target+state]')
       .equals([cfg.destinationId, 'pending'])
-      .filter((j) => j.due <= Date.now() && j.modules.some((m) => acceptsModule(cfg.scope, m)))
+      .filter(
+        (j) =>
+          j.due <= Date.now() &&
+          (j.platform === 'threads'
+            ? cfg.threadsEnabled === true
+            : j.modules.some((m) => acceptsModule(cfg.scope, m))),
+      )
       .first();
     if (!job) return;
     try {
@@ -158,7 +216,9 @@ async function flush() {
         lastBackupPath: result.path,
         lastBackupError: '',
       });
+      await markOnline();
     } catch (error) {
+      await markOffline(error);
       await db.jobs.update(job.key, {
         attempts: job.attempts + 1,
         due: Date.now() + Math.min(30, 2 ** Math.min(job.attempts, 5)) * 60000,
@@ -168,6 +228,242 @@ async function flush() {
       return;
     }
   }
+}
+async function markOnline() {
+  const meta = await chrome.storage.local.get<BackupMeta>(['disconnectedSince']);
+  if (meta.disconnectedSince === undefined) return;
+  await chrome.storage.local.remove(['disconnectedSince', 'disconnectNotified']);
+  await chrome.notifications.clear(OFFLINE_NOTIFICATION);
+}
+/** Only an unreachable server counts as "Obsidian is off"; auth or file errors do not. */
+async function markOffline(error: unknown) {
+  if (!(error instanceof BackupConnectionError) || !OFFLINE_CODES.has(error.code)) return;
+  const meta = await chrome.storage.local.get<BackupMeta>([
+    'disconnectedSince',
+    'disconnectNotified',
+  ]);
+  const since = meta.disconnectedSince ?? Date.now();
+  if (meta.disconnectedSince === undefined)
+    await chrome.storage.local.set({ disconnectedSince: since });
+  if (meta.disconnectNotified || Date.now() - since < OFFLINE_NOTIFY_AFTER) return;
+  const pending = await db.jobs.where('state').equals('pending').count();
+  await chrome.notifications.create(OFFLINE_NOTIFICATION, {
+    type: 'basic',
+    iconUrl: chrome.runtime.getURL('icons/icon32.png'),
+    title: 'Obsidian 백업 연결 끊김',
+    message: `${Math.floor((Date.now() - since) / 60000)}분째 Obsidian Local REST API에 연결할 수 없습니다. 대기 중인 ${pending}개 항목은 보관 중이며 연결되면 자동으로 저장합니다.`,
+    priority: 1,
+  });
+  await chrome.storage.local.set({ disconnectNotified: true });
+}
+/** Probe the API periodically so a closed Obsidian is noticed even with an empty queue. */
+async function healthCheck() {
+  const cfg = await config();
+  if (!cfg.enabled || !cfg.destinationId) return;
+  const meta = await chrome.storage.local.get<BackupMeta>([
+    'disconnectedSince',
+    'disconnectNotified',
+    'lastProbeAt',
+  ]);
+  const now = Date.now();
+  const overdue =
+    meta.disconnectedSince !== undefined &&
+    !meta.disconnectNotified &&
+    now - meta.disconnectedSince >= OFFLINE_NOTIFY_AFTER;
+  if (!overdue && now - (meta.lastProbeAt ?? 0) < PROBE_INTERVAL) return;
+  await chrome.storage.local.set({ lastProbeAt: now });
+  try {
+    await (await apiClient()).connect();
+  } catch (error) {
+    await markOffline(error);
+    return;
+  }
+  await markOnline();
+  if (meta.disconnectedSince !== undefined) {
+    // Reconnected: do not wait out the exponential backoff of queued notes.
+    await db.jobs
+      .where('[target+state]')
+      .equals([cfg.destinationId, 'pending'])
+      .modify((job: BackupJob) => {
+        job.due = 0;
+      });
+    void drain().catch(reportError);
+  }
+}
+
+interface AutoRun {
+  startedAt: number;
+  updatedAt: number;
+  queue: AutoPlatform[];
+  session?: AutoSession;
+  result: AutoRunResult;
+}
+let autoLock: Promise<unknown> = Promise.resolve();
+function withAutoLock<T>(task: () => Promise<T>): Promise<T> {
+  const result = autoLock.then(task);
+  autoLock = result.catch(() => {});
+  return result;
+}
+async function autoRun() {
+  return (await chrome.storage.session.get<Record<string, AutoRun>>(AUTO_RUN_KEY))[AUTO_RUN_KEY];
+}
+async function saveAutoRun(run: AutoRun | undefined) {
+  if (run) await chrome.storage.session.set({ [AUTO_RUN_KEY]: { ...run, updatedAt: Date.now() } });
+  else await chrome.storage.session.remove(AUTO_RUN_KEY);
+}
+async function autoInterval() {
+  const stored = (
+    await chrome.storage.local.get<Record<string, { intervalHours?: unknown }>>(AUTO_CONFIG_KEY)
+  )[AUTO_CONFIG_KEY];
+  return normalizeInterval(stored?.intervalHours);
+}
+async function ensureAutoAlarm(reset = false) {
+  const hours = await autoInterval();
+  const alarm = await chrome.alarms.get(AUTO_ALARM);
+  if (!hours) {
+    if (alarm) await chrome.alarms.clear(AUTO_ALARM);
+    return;
+  }
+  if (reset || !alarm || alarm.periodInMinutes !== hours * 60)
+    await chrome.alarms.create(AUTO_ALARM, {
+      delayInMinutes: hours * 60,
+      periodInMinutes: hours * 60,
+    });
+}
+async function autoStatus() {
+  const run = await autoRun();
+  const alarm = await chrome.alarms.get(AUTO_ALARM);
+  return {
+    intervalHours: await autoInterval(),
+    running: run ? (run.session?.platform ?? 'starting') : '',
+    nextRun: alarm?.scheduledTime ?? 0,
+    lastRun:
+      (await chrome.storage.local.get<Record<string, AutoRunResult>>(AUTO_RESULT_KEY))[
+        AUTO_RESULT_KEY
+      ] ?? null,
+  };
+}
+async function knownIds(platform: AutoPlatform) {
+  const stored =
+    (
+      await chrome.storage.local.get<Record<string, Partial<Record<AutoPlatform, string[]>>>>(
+        AUTO_KNOWN_KEY,
+      )
+    )[AUTO_KNOWN_KEY] ?? {};
+  const keys = (await db.jobs.toCollection().primaryKeys()) as string[];
+  return {
+    stored,
+    set: new Set([...(stored[platform] ?? []), ...knownFromJobKeys(keys, platform)]),
+  };
+}
+/** Opens the next source tab, or records the finished run. Caller holds the auto lock. */
+async function openNextSource(run: AutoRun) {
+  for (let platform = run.queue.shift(); platform; platform = run.queue.shift()) {
+    try {
+      const known = [...(await knownIds(platform)).set];
+      const tab = await chrome.tabs.create({ url: AUTO_SOURCES[platform], active: false });
+      if (tab.id === undefined) throw new Error('탭을 열지 못했습니다.');
+      run.session = {
+        platform,
+        tabId: tab.id,
+        startedAt: Date.now(),
+        known,
+        seen: [],
+        fresh: 0,
+        idle: 0,
+        steps: 0,
+      };
+      await saveAutoRun(run);
+      await chrome.alarms.create(AUTO_WATCHDOG, { when: Date.now() + AUTO_TIMEOUT });
+      return;
+    } catch {
+      run.result[platform] = { fresh: 0, reason: 'error' };
+    }
+  }
+  run.result.finishedAt = Date.now();
+  await chrome.storage.local.set({ [AUTO_RESULT_KEY]: run.result });
+  await saveAutoRun(undefined);
+  await chrome.alarms.clear(AUTO_WATCHDOG);
+}
+/** Records one source and closes its tab after a short grace period for in-flight saves. */
+async function finishSource(
+  run: AutoRun,
+  session: AutoSession,
+  reason: AutoStopReason,
+  grace: number,
+) {
+  run.result[session.platform] = { fresh: session.fresh, reason };
+  run.session = undefined;
+  const { stored } = await knownIds(session.platform);
+  await chrome.storage.local.set({
+    [AUTO_KNOWN_KEY]: {
+      ...stored,
+      [session.platform]: mergeKnown(stored[session.platform] ?? [], session.seen),
+    },
+  });
+  await saveAutoRun(run);
+  // If the worker stops during the grace period, the watchdog still continues the run.
+  await chrome.alarms.create(AUTO_WATCHDOG, { when: Date.now() + grace + 60000 });
+  setTimeout(() => {
+    void chrome.tabs.remove(session.tabId).catch(() => {});
+    void withAutoLock(async () => {
+      const current = await autoRun();
+      if (current && !current.session) await openNextSource(current);
+    }).catch(reportError);
+  }, grace);
+}
+function startAutoCollect() {
+  return withAutoLock(async () => {
+    const existing = await autoRun();
+    if (existing && Date.now() - existing.updatedAt < AUTO_TIMEOUT + 120000) return false;
+    if (existing?.session) void chrome.tabs.remove(existing.session.tabId).catch(() => {});
+    const now = Date.now();
+    await openNextSource({
+      startedAt: now,
+      updatedAt: now,
+      queue: ['x', 'threads'],
+      result: { startedAt: now, finishedAt: 0 },
+    });
+    return true;
+  });
+}
+async function autoHello(sender: chrome.runtime.MessageSender, platform: AutoPlatform) {
+  const session = (await autoRun())?.session;
+  return {
+    ok: true,
+    auto: session?.tabId === sender.tab?.id && session?.platform === platform,
+  };
+}
+function autoStepMessage(
+  sender: chrome.runtime.MessageSender,
+  platform: AutoPlatform,
+  ids: unknown,
+) {
+  return withAutoLock(async () => {
+    const run = await autoRun();
+    const session = run?.session;
+    if (!run || !session || session.tabId !== sender.tab?.id || session.platform !== platform)
+      return { ok: true, continue: false };
+    if (
+      !Array.isArray(ids) ||
+      ids.length > 5000 ||
+      !ids.every((id) => typeof id === 'string' && /^[\w-]{1,40}$/.test(id))
+    )
+      throw new Error('자동 수집 데이터 형식이 올바르지 않습니다.');
+    const step = autoStep(session, ids, new Set(session.known));
+    if (step.stop) await finishSource(run, step.session, step.stop, 4000);
+    else await saveAutoRun({ ...run, session: step.session });
+    return { ok: true, continue: !step.stop };
+  });
+}
+function autoWatchdog() {
+  return withAutoLock(async () => {
+    const run = await autoRun();
+    if (!run) return;
+    if (run.session && Date.now() - run.session.startedAt < AUTO_TIMEOUT - 1000) return;
+    if (run.session) await finishSource(run, run.session, 'timeout', 0);
+    else await openNextSource(run);
+  });
 }
 function drain() {
   if (!running)
@@ -205,16 +501,31 @@ function xSender(sender: chrome.runtime.MessageSender) {
     isXPage(sender.url ?? '')
   );
 }
+function threadsSender(sender: chrome.runtime.MessageSender) {
+  return (
+    sender.id === chrome.runtime.id &&
+    sender.tab?.id !== undefined &&
+    sender.frameId === 0 &&
+    isThreadsPage(sender.url ?? '')
+  );
+}
 async function handle(msg: Record<string, unknown>, sender: chrome.runtime.MessageSender) {
   const ui = ownUI(sender),
-    content = xSender(sender);
-  if (!ui && !content) throw new Error('허용되지 않은 백업 요청입니다.');
+    content = xSender(sender),
+    threads = threadsSender(sender);
+  if (!ui && !content && !threads) throw new Error('허용되지 않은 백업 요청입니다.');
   if (msg.type === 'TWE_BACKUP_CONFIG_GET') return { ok: true, config: await config() };
   if (msg.type === 'TWE_BACKUP_OPEN') {
     await chrome.runtime.openOptionsPage();
     return { ok: true };
   }
   if (msg.type === 'TWE_BACKUP_ENQUEUE' && content) return enqueue(msg.module, msg.records);
+  if (msg.type === 'TWE_BACKUP_THREAD' && content) return enqueueThread(msg.bundle);
+  if (msg.type === 'TWE_BACKUP_THREADS' && threads) return enqueueThreads(msg.bundle);
+  if (msg.type === 'TWE_AUTO_HELLO' && (content || threads))
+    return autoHello(sender, content ? 'x' : 'threads');
+  if (msg.type === 'TWE_AUTO_STEP' && (content || threads))
+    return autoStepMessage(sender, content ? 'x' : 'threads', msg.ids);
   if (!ui) throw new Error('백업 설정은 확장 프로그램 화면에서만 변경할 수 있습니다.');
   switch (msg.type) {
     case 'TWE_BACKUP_STATUS':
@@ -227,10 +538,17 @@ async function handle(msg: Record<string, unknown>, sender: chrome.runtime.Messa
       if (typeof msg.enabled !== 'boolean' || !['bookmarks', 'tweets'].includes(String(msg.scope)))
         throw new Error('올바르지 않은 백업 설정입니다.');
       const cfg = await config();
+      if (msg.threadsEnabled !== undefined && typeof msg.threadsEnabled !== 'boolean')
+        throw new Error('Threads 백업 설정이 올바르지 않습니다.');
       if (msg.enabled && !cfg.destinationId) throw new Error('먼저 연결 확인을 실행하세요.');
       if (msg.enabled) await (await apiClient()).connect();
       await chrome.storage.local.set({
-        [CONFIG_KEY]: { ...cfg, enabled: msg.enabled, scope: msg.scope },
+        [CONFIG_KEY]: {
+          ...cfg,
+          enabled: msg.enabled,
+          scope: msg.scope,
+          threadsEnabled: msg.threadsEnabled ?? cfg.threadsEnabled,
+        },
       });
       if (msg.enabled) {
         void replayTabs().catch(reportError);
@@ -258,6 +576,17 @@ async function handle(msg: Record<string, unknown>, sender: chrome.runtime.Messa
       }
       return { ok: true, tabs: await replayTabs() };
     }
+    case 'TWE_AUTO_CONFIG_SET': {
+      if (!(AUTO_INTERVALS as readonly unknown[]).includes(msg.intervalHours))
+        throw new Error('올바르지 않은 수집 주기입니다.');
+      await chrome.storage.local.set({ [AUTO_CONFIG_KEY]: { intervalHours: msg.intervalHours } });
+      await ensureAutoAlarm(true);
+      return status();
+    }
+    case 'TWE_AUTO_COLLECT_NOW': {
+      if (!(await startAutoCollect())) throw new Error('이미 자동 수집이 진행 중입니다.');
+      return status();
+    }
     default:
       throw new Error('지원하지 않는 백업 요청입니다.');
   }
@@ -265,19 +594,45 @@ async function handle(msg: Record<string, unknown>, sender: chrome.runtime.Messa
 chrome.runtime.onMessage.addListener((message: unknown, sender, reply) => {
   if (!message || typeof message !== 'object') return;
   const msg = message as Record<string, unknown>;
-  if (typeof msg.type !== 'string' || !msg.type.startsWith('TWE_BACKUP_')) return;
+  if (
+    typeof msg.type !== 'string' ||
+    !(msg.type.startsWith('TWE_BACKUP_') || msg.type.startsWith('TWE_AUTO_'))
+  )
+    return;
   void handle(msg, sender).then(reply, (error) => {
-    reply({ ok: false, error: error instanceof Error ? error.message : '백업 오류' });
+    reply({
+      ok: false,
+      error: error instanceof Error ? error.message : '백업 오류',
+      code: error instanceof BackupConnectionError ? error.code : 'BACKUP_ERROR',
+    });
   });
   return true;
 });
 async function initialize() {
   await READY;
   if (!(await chrome.alarms.get(ALARM))) await chrome.alarms.create(ALARM, { periodInMinutes: 1 });
+  await ensureAutoAlarm();
   void drain().catch(reportError);
 }
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === ALARM) void drain().catch(reportError);
+  if (alarm.name === ALARM)
+    void healthCheck()
+      .catch(reportError)
+      .then(() => drain())
+      .catch(reportError);
+  if (alarm.name === AUTO_ALARM) void startAutoCollect().catch(reportError);
+  if (alarm.name === AUTO_WATCHDOG) void autoWatchdog().catch(reportError);
+});
+chrome.tabs.onRemoved.addListener((tabId) => {
+  void withAutoLock(async () => {
+    const run = await autoRun();
+    if (run?.session?.tabId === tabId) await finishSource(run, run.session, 'error', 0);
+  }).catch(reportError);
+});
+chrome.notifications.onClicked.addListener((id) => {
+  if (id !== OFFLINE_NOTIFICATION) return;
+  void chrome.runtime.openOptionsPage();
+  void chrome.notifications.clear(id);
 });
 chrome.runtime.onInstalled.addListener(() => {
   void initialize().catch(reportError);

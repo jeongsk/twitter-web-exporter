@@ -48,3 +48,64 @@
   max-height: calc(100vh - 180px);
   overflow-y: auto;
 }
+
+/* Shared theme, scoped to the Threads panel; do not style the host feed. */
+#twe-root .twe-threads-control {
+  position: fixed;
+  left: 32px;
+  top: 32px;
+  width: min(320px, calc(100vw - 48px));
+  max-height: calc(100dvh - 64px);
+  display: flex;
+  flex-direction: column;
+}
+#twe-root .twe-threads-control[hidden] {
+  display: none;
+}
+#twe-root .twe-threads-panel-content {
+  overflow-y: auto;
+  min-height: 0;
+}
+#twe-root .twe-threads-panel-content pre {
+  max-height: 112px;
+}
+#twe-root .twe-threads-launcher {
+  position: fixed;
+  top: 60%;
+  left: -20px;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  background: transparent;
+  opacity: 0.6;
+}
+#twe-root .twe-threads-launcher:hover,
+#twe-root .twe-threads-launcher:focus-visible {
+  opacity: 1;
+  transform: translateX(6px);
+}
+#twe-root .twe-threads-dialog::backdrop {
+  background: rgb(0 0 0 / 35%);
+}
+#twe-root .twe-threads-dialog .modal-box {
+  max-height: calc(100dvh - 48px);
+}
+#twe-root .twe-threads-table-scroll {
+  max-height: 50dvh;
+}
+#twe-root .twe-threads-text-cell {
+  min-width: 200px;
+  max-width: 480px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 480px) {
+  #twe-root .twe-threads-control {
+    left: 16px;
+    top: 16px;
+    width: calc(100vw - 32px);
+    max-height: calc(100dvh - 32px);
+  }
+}

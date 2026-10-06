@@ -1,3 +1,4 @@
+import { BackupConnectionError, withTimeout } from '../src/backup/connection-errors';
 import { test, expect } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { isBackupRecord, renderNote, literalMarkdown } from '../src/backup/format';
@@ -124,4 +125,32 @@ test('wrong destination and authentication failure do not write anything', async
   );
   await expect(denied.connect()).rejects.toThrow('인증');
   expect(api.calls).toHaveLength(0);
+});
+
+test('connection diagnostics distinguish unauthenticated health, HTTPS network failure and invalid JSON', async () => {
+  const wrongKey = new ObsidianRestClient(settings, async () =>
+    Response.json({
+      service: 'Obsidian Local REST API',
+      authenticated: false,
+    }),
+  );
+  await expect(wrongKey.connect()).rejects.toMatchObject({ code: 'AUTH' });
+  const network = new ObsidianRestClient(
+    { ...settings, endpoint: 'https://127.0.0.1:27124' },
+    async () => {
+      throw new TypeError('Failed to fetch');
+    },
+  );
+  await expect(network.connect()).rejects.toMatchObject({ code: 'TLS_OR_NETWORK' });
+  for (const body of ['null', '[]', 'not JSON', '{"service":42}']) {
+    const invalid = new ObsidianRestClient(settings, async () => new Response(body));
+    await expect(invalid.connect()).rejects.toMatchObject({ code: 'RESPONSE' });
+  }
+});
+test('bounded UI waits report timeout without exposing any request data', async () => {
+  await expect(
+    withTimeout(new Promise(() => {}), 5, '권한 확인 시간 초과', 'PERMISSION_TIMEOUT'),
+  ).rejects.toMatchObject({ code: 'PERMISSION_TIMEOUT' });
+  expect(await withTimeout(Promise.resolve(true), 1000, 'unused', 'TIMEOUT')).toBe(true);
+  expect(new BackupConnectionError('safe message', 'AUTH').message).toBe('safe message');
 });

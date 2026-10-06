@@ -21,10 +21,12 @@ for (const [index, entry] of [
   'popup',
   'background',
   'backup-options',
+  'threads-content',
 ].entries()) {
   await build({
     root,
     configFile: false,
+    esbuild: { charset: 'ascii' },
     define: { 'process.env.NODE_ENV': JSON.stringify('production') },
     publicDir: false,
     resolve: {
@@ -68,10 +70,10 @@ const manifest = {
   manifest_version: 3,
   name: 'Twitter Web Exporter',
   version: pkg.version,
-  version_name: `${pkg.version}-chrome.3`,
-  description: 'X 게시물·북마크·팔로워를 브라우저에 저장하고 JSON·CSV·HTML 및 미디어로 내보냅니다.',
+  version_name: `${pkg.version}-chrome.9`,
+  description: 'X 북마크와 Threads 저장 게시물을 수집하고 Obsidian 볼트로 자동 백업합니다.',
   minimum_chrome_version: '111',
-  permissions: ['activeTab', 'storage', 'alarms'],
+  permissions: ['activeTab', 'storage', 'alarms', 'notifications'],
   optional_host_permissions: [
     'https://127.0.0.1/*',
     'https://localhost/*',
@@ -89,6 +91,18 @@ const manifest = {
   content_scripts: [
     { matches, js: ['content.js'], css: ['app.css'], run_at: 'document_start', world: 'ISOLATED' },
     { matches, js: ['page.js'], run_at: 'document_start', world: 'MAIN' },
+    {
+      matches: [
+        'https://www.threads.com/*',
+        'https://threads.com/*',
+        'https://www.threads.net/*',
+        'https://threads.net/*',
+      ],
+      js: ['threads-content.js'],
+      css: ['app.css'],
+      run_at: 'document_idle',
+      world: 'ISOLATED',
+    },
   ],
   web_accessible_resources: [{ resources: ['app.js'], matches }],
   content_security_policy: { extension_pages: "script-src 'self'; object-src 'none'" },

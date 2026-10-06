@@ -91,3 +91,39 @@ JSON/CSV/HTML 파일 다운로드, 계정 ID 변경 감지 시 수집 중단을 
 - 테스트 중 native fetch의 receiver 바인딩 문제를 수정하여 실제 worker HTTP 요청을 검증했다.
 - 실제 ~/wiki 플러그인 5.2.0 설치 확인. 인증서 신뢰·실제 API 키 입력·실제 볼트 쓰기는 사용자 연결 단계로 남겨두었다.
 - 자세한 내용: `OBSIDIAN-BACKUP.md`를 참고한다.
+
+## Obsidian 연결 오류 수정 — 2026-09-23 / chrome.4
+
+- 연결 오류를 버튼 바로 아래 고정 표시; 상태 polling으로 오류가 사라지는 문제 수정.
+- 권한/워커 응답 제한시간, 연결 진행 상태, API 키 인증 실패 안내 보강.
+- 별도 Chromium에서 실제 localhost TLS 오류(`ERR_CERT_AUTHORITY_INVALID`) 확인.
+- 해당 볼트의 CA를 검사에만 명시해 실제 API 인증 성공 확인. 인증서 신뢰 설정·볼트 데이터는 변경하지 않음.
+- 공개 CA만 Downloads에 추출; API 키·개인 키는 내보내지 않음.
+- 타입 검사, 린트, 기존 기능 포함 23개 테스트, Chrome/UserScript 빌드, ZIP 검사 통과.
+
+## 북마크 댓글 묶음 — 2026-09-23
+
+chrome.5에서 원문·댓글·대댓글을 한 스냅샷으로 저장한다.
+부모 ID로 연결하며 추가 수집분은 전체 묶음의 변경본으로 보관한다.
+기존 raw 파일·기존 API 설정은 변경하지 않는다.
+사이트 DB v4, 확장 백업 DB v2를 사용한다. 이전 스키마를 보존한다.
+타입·린트·31개 테스트·두 빌드·ZIP 무결성 검사가 통과했다.
+수집 범위와 구현 세부 사항은 BOOKMARK-THREADS.md에 기록했다.
+
+## Threads 저장 게시물 지원 — 2026-09-23
+
+Chrome `1.4.3-chrome.6`에 Threads /saved 자동 백업을 추가했다.
+별도 Threads 체크박스를 켜면 기존 Obsidian 연결을 재사용해 `threads/`에 분리 저장한다.
+전체 39개 테스트 및 두 빌드·배포 ZIP 검증 통과. 사용 범위·제약은 `docs/THREADS-BACKUP.md` 참고.
+실사용 Threads 계정과 볼트 파일에는 접근하거나 쓰지 않았다.
+
+## Threads Web Exporter 제어판 — 1.4.3-chrome.7
+
+- Threads 미니 위젯을 기존 Preact 모듈 행·DaisyUI 테마·실행 로그를 재사용하는 제어판으로 교체.
+- Threads 원본 캐시에서 북마크/댓글 목록·검색·페이지 이동을 제공하고 X 전용 모듈은 실행하지 않음.
+- 제어판 숨김 상태 유지, 고양이 버튼·툴바 복구, 테마/언어 설정, 오류 표시와 Obsidian 설정 연결.
+- Threads content script에도 패키지의 app.css를 주입하며 수집기가 #twe-root를 무시하도록 변경.
+- 댓글 인덱스의 빈 문자열 제외 조회는 `.above('')`로 처리. 빈 댓글 DB에서의 조회 멈춤을 회귀 검사.
+- 검색 입력에 포커스가 있어도 Escape로 닫히도록 native dialog의 키 입력 처리 보강.
+- 전체 42개 테스트, 타입·린트, Chrome/UserScript 빌드 및 배포 ZIP 검사 통과.
+- Git 커밋·푸시, 사용자 Chrome/볼트 변경은 하지 않음.

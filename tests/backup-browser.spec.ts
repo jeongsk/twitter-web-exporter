@@ -1,3 +1,4 @@
+import { detailResponse, threadTweet } from './thread-fixture';
 import { test, expect, chromium, type Page } from '@playwright/test';
 import { createServer } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -120,6 +121,20 @@ test('automatic vault backup: durable queue, restart, dedup, revisions, offline 
               "default-src 'none'; script-src 'nonce-fixture'; connect-src 'self'; style-src 'unsafe-inline'; img-src data: blob:",
           },
         });
+      if (url.origin === 'https://x.com' && url.pathname.endsWith('/TweetDetail')) {
+        const tweets =
+          url.searchParams.get('stage') === 'late'
+            ? [
+                threadTweet('1020', '1010'),
+                threadTweet('1011', '1001'),
+                threadTweet('9000', '8999', '8999'),
+              ]
+            : [threadTweet('1010', '1001')];
+        return route.fulfill({
+          contentType: 'application/json',
+          body: JSON.stringify(detailResponse(tweets)),
+        });
+      }
       if (url.origin === 'https://x.com' && url.pathname.includes('/i/api/graphql/')) {
         const data = fixture(url.searchParams.get('id') ?? '1001');
         const entry = data.data.bookmark_timeline_v2.timeline.instructions[0]!.entries[0]!;

@@ -11,7 +11,7 @@
       <header>
         <span class="eyebrow">TWITTER WEB EXPORTER</span>
         <h1>Obsidian 자동 백업</h1>
-        <p>수집한 X 게시물을 로컬 API를 통해 볼트에 보관합니다.</p>
+        <p>수집한 X 북마크와 Threads 저장 게시물을 로컬 API로 볼트에 보관합니다.</p>
       </header>
       <section aria-labelledby="connection-title">
         <h2 id="connection-title">1. Obsidian 연결</h2>
@@ -33,8 +33,8 @@
           placeholder="Obsidian 설정에서 복사한 API 키"
         />
         <p class="hint">
-          이 Chrome 프로필의 확장 프로그램 로컬 저장소에 보관합니다. X 페이지나 백업 노트에 포함하지
-          않으며 별도 암호화 저장은 아닙니다. 키를 채팅에 붙여넣지 마세요.
+          이 Chrome 프로필의 확장 프로그램 로컬 저장소에 보관합니다. X·Threads 페이지나 백업 노트에
+          포함하지 않으며 별도 암호화 저장은 아닙니다. 키를 채팅에 붙여넣지 마세요.
         </p>
         <label for="folder">볼트 내부 저장 폴더</label>
         <input
@@ -51,27 +51,100 @@
           raw/ 폴더도 Git·클라우드에 동기화될 수 있습니다. 비공개 북마크를 공개 저장소에 올리지
           않도록 별도로 제외하세요.
         </p>
-        <button id="connect" type="button">연결 확인 · 저장</button>
-        <p id="connection-state" role="status"></p>
+        <button id="connect" type="button" aria-describedby="connection-state connection-error">
+          연결 확인 · 저장
+        </button>
+        <p id="connection-state" role="status" aria-live="polite">연결 설정을 불러오고 있습니다.</p>
+        <div id="connection-error" role="alert" aria-live="assertive" tabindex="-1" hidden></div>
+        <p class="hint">
+          <a
+            id="api-status-link"
+            href="https://127.0.0.1:27124/"
+            target="_blank"
+            rel="noopener noreferrer"
+            >API 상태 페이지 열기</a
+          >
+          · API 키 없이 서버·인증서 상태를 확인합니다.
+        </p>
+        <div id="connection-help" class="connection-help" hidden>
+          <strong>HTTPS 인증서 확인 방법</strong>
+          <p>
+            API 상태 페이지에 <code>NET::ERR_CERT_AUTHORITY_INVALID</code>가 표시되면, Obsidian의
+            Local REST API 설정에서 발급한 CA 인증서를 신뢰 등록해야 합니다.
+          </p>
+          <p>
+            macOS에서는 해당 CA 인증서를 키체인 접근의 로그인 키체인에 추가하고, 인증서를 열어
+            「신뢰 → 이 인증서 사용 시 → 항상 신뢰」로 설정하세요. 이후 Chrome을 다시 시작하고
+            연결을 확인하세요.
+          </p>
+          <p>
+            이 플러그인이 발급한 인증서만 사용하세요. 확장 프로그램은 인증서 검증을 끄거나 HTTP로
+            자동 전환하지 않습니다.
+          </p>
+        </div>
       </section>
       <section aria-labelledby="automation-title">
         <h2 id="automation-title">2. 자동 백업</h2>
-        <label for="scope">백업 대상</label>
+        <p class="hint" id="thread-backup-help">
+          북마크 원문과 수집된 댓글·대댓글은 하나의 Markdown 묶음으로 저장합니다. 북마크 목록에는
+          댓글 본문이 없으므로 원문을 열고 스크롤하거나 답글 더 보기를 펼쳐 주세요. 나중에 수집된
+          댓글도 원문과 함께 새 묶음으로 백업합니다. 미로드·삭제·비공개 댓글의 전체 수집은 보장하지
+          않습니다.
+        </p>
+        <label for="scope">X 백업 대상</label>
         <select id="scope">
           <option value="bookmarks">북마크만 (기본)</option>
           <option value="tweets">수집한 모든 게시물</option>
         </select>
+        <label class="check"
+          ><input id="threads-enabled" type="checkbox" />Threads 저장 게시물도 자동 백업</label
+        >
+        <p class="hint" id="threads-backup-help">
+          Threads의 /saved 목록에서 로드된 게시물을 고유 링크별로 자동 수집합니다. 기존 저장 폴더
+          아래 threads/에 분리해서 저장하며 X 파일과 충돌하지 않습니다. 짧은 글·사진 전용 글도
+          포함합니다. 접힌 본문은 원문에서 더 보기를 펼쳐 주세요. 댓글은 명시적인 답글 대상 링크가
+          확인되는 경우에만 원문과 묶습니다. 모든 댓글·미로드 게시물 수집을 보장하지 않습니다. 아래
+          자동 수집을 켜면 저장 목록을 주기적으로 열어 스크롤하며, 그 밖의 추가 API 요청은 하지
+          않습니다.
+        </p>
         <label class="check"><input id="enabled" type="checkbox" />자동 백업 사용</label>
         <button id="apply" type="button">백업 설정 적용</button>
         <p class="hint">
-          처음 켜면 열려 있는 X 탭의 기존 수집 데이터도 대기열에 넣습니다. 이후 수집한 게시물은 자동
-          추가됩니다. Obsidian이 닫히면 기다렸다 재시도합니다. Chrome 종료·절전 중에는 처리하지
-          않습니다.
+          처음 켜면 열려 있는 X·Threads 탭의 기존 수집 데이터도 대기열에 넣습니다. 이후 수집한
+          게시물은 자동 추가됩니다. Obsidian이 닫히면 기다렸다 재시도합니다. Chrome 종료·절전 중에는
+          처리하지 않습니다.
+        </p>
+      </section>
+      <section aria-labelledby="collect-title">
+        <h2 id="collect-title">3. 자동 수집</h2>
+        <p>
+          설정한 주기마다 X 북마크와 Threads 저장 목록을 비활성 탭으로 열어 새 항목이 없을 때까지
+          스크롤한 뒤 탭을 닫습니다. 이전에 수집한 항목이 나오면 그 자리에서 멈춥니다.
+        </p>
+        <label for="auto-interval">수집 주기</label>
+        <select id="auto-interval">
+          <option value="0">끄기</option>
+          <option value="1">1시간마다</option>
+          <option value="3">3시간마다 (기본)</option>
+          <option value="6">6시간마다</option>
+          <option value="12">12시간마다</option>
+          <option value="24">24시간마다</option>
+        </select>
+        <div class="actions">
+          <button id="collect-now" type="button">지금 수집</button>
+        </div>
+        <p id="auto-state" role="status">자동 수집 상태를 불러오고 있습니다.</p>
+        <p id="auto-last"></p>
+        <p class="hint">
+          X·Threads에 로그인된 상태여야 합니다. Chrome이 실행 중일 때만 동작하며, 수집한 항목은 위
+          자동 백업 설정에 따라 Obsidian으로 보냅니다. Obsidian이 꺼져 있으면 대기열에 보관했다가
+          연결되면 저장하고, 연결이 1시간 넘게 끊기면 알림을 표시합니다.
         </p>
       </section>
       <section aria-labelledby="queue-title">
         <h2 id="queue-title">백업 상태</h2>
         <p id="counts" role="status">상태를 불러오고 있습니다.</p>
+        <p id="offline" role="alert" hidden></p>
         <p id="last-success"></p>
         <p id="last-path" class="path"></p>
         <p id="error" role="alert"></p>
@@ -81,9 +154,9 @@
           <button id="verify" type="button">저장 파일 다시 확인</button>
         </div>
         <p class="hint">
-          동일 ID·본문은 중복 저장하지 않습니다. 내용 변경 시 revisions/에 저장합니다. 미디어는
-          URL만 보관하며 DM·팔로워 목록·전체 DB 덤프는 포함하지 않습니다. 볼트에서 삭제한 백업을
-          복구하려면 저장 파일 다시 확인을 누르세요.
+          같은 원문·댓글 구성은 중복 저장하지 않습니다. 댓글 추가 또는 내용 변경 시 전체 묶음을
+          revisions/에 저장합니다. 미디어는 URL만 보관하며 DM·팔로워 목록·전체 DB 덤프는 포함하지
+          않습니다. 볼트에서 삭제한 백업을 복구하려면 저장 파일 다시 확인을 누르세요.
         </p>
       </section>
       <footer>
