@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import {
+  AUTO_EMPTY_STEPS,
   AUTO_IDLE_STEPS,
   AUTO_KNOWN_LIMIT,
   AUTO_MAX_STEPS,
@@ -56,6 +57,17 @@ test('auto step stops when scrolling yields nothing new or the limit is reached'
     ({ session: busy, stop } = autoStep(busy, [`${i}`], new Set()));
   expect(stop).toBe('limit');
   expect(busy.fresh).toBe(AUTO_MAX_STEPS);
+});
+
+test('a slow first load is waited for, but a page without any item ends', () => {
+  let state = session();
+  for (let i = 1; i < AUTO_EMPTY_STEPS; i++) {
+    const step = autoStep(state, [], new Set());
+    expect(step.stop).toBeUndefined();
+    state = step.session;
+  }
+  expect(autoStep(state, ['1'], new Set()).stop).toBeUndefined();
+  expect(autoStep(state, [], new Set()).stop).toBe('empty');
 });
 
 test('known ids are read from job keys and bounded', () => {
