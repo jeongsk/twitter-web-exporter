@@ -6,7 +6,7 @@ import {
   AUTO_MAX_STEPS,
   autoStep,
   bookmarkIds,
-  knownFromJobKeys,
+  knownFromJobs,
   mergeKnown,
   normalizeInterval,
   type AutoSession,
@@ -70,14 +70,16 @@ test('a slow first load is waited for, but a page without any item ends', () => 
   expect(autoStep(state, [], new Set()).stop).toBe('empty');
 });
 
-test('known ids are read from job keys and bounded', () => {
-  const keys = [
-    'dest:1001:aaaa',
-    `dest:threads:${threadsStorageId('Case_A1')}:bbbb`,
-    'dest:not-a-tweet:cccc',
+test('known ids come only from bookmark and Threads saved jobs', () => {
+  const jobs = [
+    { key: 'dest:1001:aaaa', modules: ['BookmarksModule'] },
+    // Saved from the home timeline under the "all posts" scope: may be bookmarked later.
+    { key: 'dest:1002:aaaa', modules: ['HomeTimelineModule'] },
+    { key: `dest:threads:${threadsStorageId('Case_A1')}:bbbb`, modules: ['ThreadsSavedModule'] },
+    { key: 'dest:not-a-tweet:cccc', modules: ['BookmarksModule'] },
   ];
-  expect(knownFromJobKeys(keys, 'x')).toEqual(['1001']);
-  expect(knownFromJobKeys(keys, 'threads')).toEqual(['Case_A1']);
+  expect(knownFromJobs(jobs, 'x')).toEqual(['1001']);
+  expect(knownFromJobs(jobs, 'threads')).toEqual(['Case_A1']);
   const many = Array.from({ length: AUTO_KNOWN_LIMIT }, (_, i) => `${i}`);
   const merged = mergeKnown(many, ['new', '0']);
   expect(merged).toHaveLength(AUTO_KNOWN_LIMIT);

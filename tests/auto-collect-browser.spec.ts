@@ -38,8 +38,9 @@ test('periodic collection: inactive tabs, scroll until exhausted, stop at known 
   const files = new Map<string, string>();
   let pages: string[][] = [];
   const requested: number[] = [];
+  let rejectAuth = false;
   const handler: Parameters<typeof createServer>[1] = async (req, res) => {
-    if (req.headers.authorization !== `Bearer ${API_KEY}`) {
+    if (rejectAuth || req.headers.authorization !== `Bearer ${API_KEY}`) {
       res.writeHead(401).end();
       return;
     }
@@ -218,6 +219,71 @@ test('periodic collection: inactive tabs, scroll until exhausted, stop at known 
       .poll(() => settings.evaluate(async () => Object.keys(await chrome.notifications.getAll())))
       .toEqual([]);
     await expect(settings.locator('#offline')).toBeHidden();
+
+    // A server that answers, even with an auth error, is reachable: not an outage.
+    await settings.evaluate(() =>
+      chrome.storage.local.set({ disconnectedSince: Date.now() - 10 * 60 * 1000 }),
+    );
+    rejectAuth = true;
+    pages = [['1006', '1005'], []];
+    await call(settings, { type: 'TWE_AUTO_COLLECT_NOW' });
+    await expect
+      .poll(async () => (await call(settings, { type: 'TWE_BACKUP_STATUS' })).disconnectedSince, {
+        timeout: 60000,
+      })
+      .toBe(0);
+    await expect(settings.locator('#offline')).toBeHidden();
+    rejectAuth = false;
+    await expect
+      .poll(async () => (await call(settings, { type: 'TWE_BACKUP_STATUS' })).autoCollect.running, {
+        timeout: 60000,
+      })
+      .toBe('');
+
+    // The user switches to the collection tab: stop scrolling and leave the tab open.
+    pages = [['1008', '1007'], ['1006'], []];
+    const viewed = context.waitForEvent('page');
+    await call(settings, { type: 'TWE_AUTO_COLLECT_NOW' });
+    const userTab = await viewed;
+    await userTab.waitForURL('https://x.com/i/bookmarks');
+    await userTab.bringToFront();
+    await expect
+      .poll(
+        async () => (await call(settings, { type: 'TWE_BACKUP_STATUS' })).autoCollect.lastRun.x,
+        { timeout: 60000 },
+      )
+      .toMatchObject({ reason: 'interrupted' });
+    expect(userTab.isClosed()).toBe(false);
+
+    // A worker restart during the close grace period must not leave the tab behind.
+    await settings.bringToFront();
+    const orphan = await settings.evaluate(async () => {
+      const tab = await chrome.tabs.create({ url: 'about:blank', active: false });
+      const now = Date.now();
+      await chrome.storage.session.set({
+        autoCollectRun: {
+          startedAt: now,
+          updatedAt: now,
+          queue: [],
+          result: { startedAt: now, finishedAt: 0 },
+          closing: tab.id,
+        },
+      });
+      await chrome.alarms.create('twe-auto-collect-watchdog', { when: Date.now() + 100 });
+      return tab.id!;
+    });
+    await expect
+      .poll(() =>
+        settings.evaluate(
+          (id) =>
+            chrome.tabs.get(id).then(
+              () => true,
+              () => false,
+            ),
+          orphan,
+        ),
+      )
+      .toBe(false);
   } finally {
     await context.close();
     server.closeAllConnections();

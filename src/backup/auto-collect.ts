@@ -1,6 +1,7 @@
 /** Periodic collection: the worker opens inactive tabs, content scripts scroll and report ids. */
 export type AutoPlatform = 'x' | 'threads';
-export type AutoStopReason = 'known' | 'exhausted' | 'empty' | 'limit' | 'timeout' | 'error';
+export type AutoStopReason =
+  'known' | 'exhausted' | 'empty' | 'limit' | 'timeout' | 'interrupted' | 'error';
 export const AUTO_SOURCES: Record<AutoPlatform, string> = {
   x: 'https://x.com/i/bookmarks',
   threads: 'https://www.threads.com/saved',
@@ -49,18 +50,35 @@ export function bookmarkIds(responseText: string): string[] {
   return [...responseText.matchAll(/"entryId":"tweet-(\d{1,30})"/g)].map((m) => m[1]!);
 }
 
-/** Read already queued/saved ids from job primary keys without loading note bodies. */
-export function knownFromJobKeys(keys: string[], platform: AutoPlatform): string[] {
+/**
+ * Ids already backed up from the same list. Only bookmark (or Threads saved) jobs count: a tweet
+ * saved earlier from a timeline under the "all posts" scope may be bookmarked later.
+ */
+export function knownFromJobs(
+  jobs: { key: string; modules: string[] }[],
+  platform: AutoPlatform,
+): string[] {
   const ids: string[] = [];
-  for (const key of keys) {
+  for (const { key, modules } of jobs) {
     const parts = key.split(':');
-    if (platform === 'threads' && parts[1] === 'threads' && /^(?:[0-9a-f]{2})+$/.test(parts[2]!))
+    if (
+      platform === 'threads' &&
+      modules.includes('ThreadsSavedModule') &&
+      parts[1] === 'threads' &&
+      /^(?:[0-9a-f]{2})+$/.test(parts[2]!)
+    )
       ids.push(
         new TextDecoder().decode(
           new Uint8Array(parts[2]!.match(/../g)!.map((h) => parseInt(h, 16))),
         ),
       );
-    if (platform === 'x' && parts.length === 3 && /^\d{1,30}$/.test(parts[1]!)) ids.push(parts[1]!);
+    if (
+      platform === 'x' &&
+      modules.includes('BookmarksModule') &&
+      parts.length === 3 &&
+      /^\d{1,30}$/.test(parts[1]!)
+    )
+      ids.push(parts[1]!);
   }
   return ids;
 }
@@ -106,6 +124,7 @@ export function describeResult(result: AutoPlatformResult | undefined): string {
     exhausted: '더 불러올 항목 없음',
     empty: '항목을 찾지 못함 · 로그인 확인',
     limit: '스크롤 한도 도달',
+    interrupted: '탭을 열어 보셔서 중단',
     timeout: '시간 초과',
     error: '오류',
   }[result.reason];

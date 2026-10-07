@@ -21,7 +21,7 @@ import {
   AUTO_SOURCES,
   AUTO_TIMEOUT,
   autoStep,
-  knownFromJobKeys,
+  knownFromJobs,
   mergeKnown,
   normalizeInterval,
   type AutoPlatform,
@@ -218,7 +218,7 @@ async function flush() {
       });
       await markOnline();
     } catch (error) {
-      await markOffline(error);
+      await markConnection(error);
       await db.jobs.update(job.key, {
         attempts: job.attempts + 1,
         due: Date.now() + Math.min(30, 2 ** Math.min(job.attempts, 5)) * 60000,
@@ -256,6 +256,12 @@ async function markOffline(error: unknown) {
   });
   await chrome.storage.local.set({ disconnectNotified: true });
 }
+/** A server that answered (even with an auth or HTTP error) is reachable, so not "off". */
+async function markConnection(error: unknown) {
+  if (!(error instanceof BackupConnectionError)) return;
+  if (OFFLINE_CODES.has(error.code)) await markOffline(error);
+  else await markOnline();
+}
 /** Probe the API periodically so a closed Obsidian is noticed even with an empty queue. */
 async function healthCheck() {
   const cfg = await config();
@@ -275,7 +281,7 @@ async function healthCheck() {
   try {
     await (await apiClient()).connect();
   } catch (error) {
-    await markOffline(error);
+    await markConnection(error);
     return;
   }
   await markOnline();
@@ -296,6 +302,8 @@ interface AutoRun {
   updatedAt: number;
   queue: AutoPlatform[];
   session?: AutoSession;
+  /** Finished source tab waiting out its grace period; closed even after a worker restart. */
+  closing?: number;
   result: AutoRunResult;
 }
 let autoLock: Promise<unknown> = Promise.resolve();
@@ -350,14 +358,21 @@ async function knownIds(platform: AutoPlatform) {
         AUTO_KNOWN_KEY,
       )
     )[AUTO_KNOWN_KEY] ?? {};
-  const keys = (await db.jobs.toCollection().primaryKeys()) as string[];
+  const jobs: { key: string; modules: string[] }[] = [];
+  await db.jobs.each((job) => {
+    jobs.push({ key: job.key, modules: job.modules });
+  });
   return {
     stored,
-    set: new Set([...(stored[platform] ?? []), ...knownFromJobKeys(keys, platform)]),
+    set: new Set([...(stored[platform] ?? []), ...knownFromJobs(jobs, platform)]),
   };
 }
 /** Opens the next source tab, or records the finished run. Caller holds the auto lock. */
 async function openNextSource(run: AutoRun) {
+  if (run.closing !== undefined) {
+    await closeUnlessViewed(run.closing);
+    run.closing = undefined;
+  }
   for (let platform = run.queue.shift(); platform; platform = run.queue.shift()) {
     try {
       const known = [...(await knownIds(platform)).set];
@@ -386,6 +401,14 @@ async function openNextSource(run: AutoRun) {
   await chrome.alarms.clear(AUTO_WATCHDOG);
 }
 /** Records one source and closes its tab after a short grace period for in-flight saves. */
+/** Never close a collection tab the user switched to; it is theirs now. */
+async function closeUnlessViewed(tabId: number) {
+  try {
+    if (!(await chrome.tabs.get(tabId)).active) await chrome.tabs.remove(tabId);
+  } catch {
+    /* Already closed. */
+  }
+}
 async function finishSource(
   run: AutoRun,
   session: AutoSession,
@@ -394,6 +417,7 @@ async function finishSource(
 ) {
   run.result[session.platform] = { fresh: session.fresh, reason };
   run.session = undefined;
+  run.closing = reason === 'interrupted' ? undefined : session.tabId;
   const { stored } = await knownIds(session.platform);
   await chrome.storage.local.set({
     [AUTO_KNOWN_KEY]: {
@@ -405,7 +429,6 @@ async function finishSource(
   // If the worker stops during the grace period, the watchdog still continues the run.
   await chrome.alarms.create(AUTO_WATCHDOG, { when: Date.now() + grace + 60000 });
   setTimeout(() => {
-    void chrome.tabs.remove(session.tabId).catch(() => {});
     void withAutoLock(async () => {
       const current = await autoRun();
       if (current && !current.session) await openNextSource(current);
@@ -416,7 +439,8 @@ function startAutoCollect() {
   return withAutoLock(async () => {
     const existing = await autoRun();
     if (existing && Date.now() - existing.updatedAt < AUTO_TIMEOUT + 120000) return false;
-    if (existing?.session) void chrome.tabs.remove(existing.session.tabId).catch(() => {});
+    if (existing?.session) await closeUnlessViewed(existing.session.tabId);
+    if (existing?.closing !== undefined) await closeUnlessViewed(existing.closing);
     const now = Date.now();
     await openNextSource({
       startedAt: now,
@@ -450,6 +474,12 @@ function autoStepMessage(
       !ids.every((id) => typeof id === 'string' && /^[\w-]{1,40}$/.test(id))
     )
       throw new Error('자동 수집 데이터 형식이 올바르지 않습니다.');
+    const tab = await chrome.tabs.get(session.tabId).catch(() => undefined);
+    if (tab?.active) {
+      // The user opened the tab: stop scrolling their view and leave the tab open.
+      await finishSource(run, session, 'interrupted', 0);
+      return { ok: true, continue: false };
+    }
     const step = autoStep(session, ids, new Set(session.known));
     if (step.stop) await finishSource(run, step.session, step.stop, 4000);
     else await saveAutoRun({ ...run, session: step.session });
