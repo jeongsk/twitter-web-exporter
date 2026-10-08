@@ -239,10 +239,16 @@ async function verifyKoreanUI(page: Page, popup: Page, tabId: number) {
   expect(
     await page.evaluate(() => JSON.parse(localStorage.getItem('twitter-web-exporter')!).language),
   ).toBe('ko');
-  await popup.evaluate(
-    async (id) => chrome.tabs.sendMessage(id, { type: 'TWE_COMMAND', action: 'open-settings' }),
-    tabId,
-  );
+  // After a reload the menu handlers register a moment after the panel renders; until then the
+  // tab answers "not ready" instead of opening settings.
+  await expect
+    .poll(() =>
+      popup.evaluate(
+        async (id) => chrome.tabs.sendMessage(id, { type: 'TWE_COMMAND', action: 'open-settings' }),
+        tabId,
+      ),
+    )
+    .toMatchObject({ ok: true });
   await expect(page.getByRole('combobox', { name: '언어', exact: true })).toHaveValue('ko');
   await page.screenshot({
     path: 'test-results/chrome-settings-ko.png',

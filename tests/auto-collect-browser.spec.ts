@@ -20,6 +20,15 @@ function next(){if(busy)return;busy=true;fetch('${api}?page='+page++).then(r=>r.
 next();addEventListener('scroll',next);</script></body></html>`;
 const call = (page: Page, message: Record<string, unknown>) =>
   page.evaluate((m) => chrome.runtime.sendMessage(m), message);
+/** The worker refuses overlapping runs; wait for the previous one so the request is not dropped. */
+async function collectNow(page: Page) {
+  await expect
+    .poll(async () => (await call(page, { type: 'TWE_BACKUP_STATUS' })).autoCollect.running, {
+      timeout: 90000,
+    })
+    .toBe('');
+  expect(await call(page, { type: 'TWE_AUTO_COLLECT_NOW' })).toMatchObject({ ok: true });
+}
 
 function bookmarksPage(ids: string[]) {
   const data = fixture(ids[0] ?? '1');
@@ -176,7 +185,7 @@ test('periodic collection: inactive tabs, scroll until exhausted, stop at known 
     // Run 2: a new bookmark on top of saved ones. It must stop without scrolling further.
     pages = [['1004', '1003', '1002'], ['1001'], []];
     requested.length = 0;
-    await call(settings, { type: 'TWE_AUTO_COLLECT_NOW' });
+    await collectNow(settings);
     await expect
       .poll(
         async () => (await call(settings, { type: 'TWE_BACKUP_STATUS' })).autoCollect.lastRun.x,
@@ -200,7 +209,7 @@ test('periodic collection: inactive tabs, scroll until exhausted, stop at known 
       chrome.storage.local.set({ disconnectedSince: Date.now() - 61 * 60 * 1000 }),
     );
     pages = [['1005', '1004'], []];
-    await call(settings, { type: 'TWE_AUTO_COLLECT_NOW' });
+    await collectNow(settings);
     await expect
       .poll(async () => (await call(settings, { type: 'TWE_BACKUP_STATUS' })).pending, {
         timeout: 60000,
@@ -228,7 +237,7 @@ test('periodic collection: inactive tabs, scroll until exhausted, stop at known 
     );
     rejectAuth = true;
     pages = [['1006', '1005'], []];
-    await call(settings, { type: 'TWE_AUTO_COLLECT_NOW' });
+    await collectNow(settings);
     await expect
       .poll(async () => (await call(settings, { type: 'TWE_BACKUP_STATUS' })).disconnectedSince, {
         timeout: 60000,
@@ -245,7 +254,7 @@ test('periodic collection: inactive tabs, scroll until exhausted, stop at known 
     // The user switches to the collection tab: stop scrolling and leave the tab open.
     pages = [['1008', '1007'], ['1006'], []];
     const viewed = context.waitForEvent('page');
-    await call(settings, { type: 'TWE_AUTO_COLLECT_NOW' });
+    await collectNow(settings);
     const userTab = await viewed;
     await userTab.waitForURL('https://x.com/i/bookmarks');
     await userTab.bringToFront();
