@@ -107,10 +107,19 @@
           자동 수집을 켜면 저장 목록을 주기적으로 열어 스크롤하며, 그 밖의 추가 API 요청은 하지
           않습니다.
         </p>
+        <label class="check"
+          ><input id="youtube-enabled" type="checkbox" />YouTube 좋아요 영상도 자동 백업</label
+        >
+        <p class="hint" id="youtube-backup-help">
+          YouTube 좋아요 목록(재생목록 LL)에 로드된 영상을 영상별로 자동 수집합니다. 기존 저장 폴더
+          아래 youtube/에 분리해서 저장합니다. 제목·채널·길이·링크 같은 메타데이터만 저장하며 영상
+          파일은 받지 않습니다. 이 Chrome 프로필에서 YouTube에 로그인되어 있어야 하고, 좋아요를 누른
+          날짜는 YouTube가 표시하지 않아 기록되지 않습니다.
+        </p>
         <label class="check"><input id="enabled" type="checkbox" />자동 백업 사용</label>
         <button id="apply" type="button">백업 설정 적용</button>
         <p class="hint">
-          처음 켜면 열려 있는 X·Threads 탭의 기존 수집 데이터도 대기열에 넣습니다. 이후 수집한
+          처음 켜면 열려 있는 X·Threads·YouTube 탭의 기존 수집 데이터도 대기열에 넣습니다. 이후 수집한
           게시물은 자동 추가됩니다. Obsidian이 닫히면 기다렸다 재시도합니다. Chrome 종료·절전 중에는
           처리하지 않습니다.
         </p>
@@ -118,8 +127,9 @@
       <section aria-labelledby="collect-title">
         <h2 id="collect-title">3. 자동 수집</h2>
         <p>
-          설정한 주기마다 X 북마크와 Threads 저장 목록을 비활성 탭으로 열어 새 항목이 없을 때까지
-          스크롤한 뒤 탭을 닫습니다. 이전에 수집한 항목이 나오면 그 자리에서 멈춥니다.
+          설정한 주기마다 X 북마크와, 위에서 백업을 켠 Threads 저장 목록·YouTube 좋아요 목록을
+          비활성 탭으로 열어 새 항목이 없을 때까지 스크롤한 뒤 탭을 닫습니다. 이전에 수집한 항목이
+          나오면 그 자리에서 멈춥니다. 백업을 끈 목록은 열지 않습니다.
         </p>
         <label for="auto-interval">수집 주기</label>
         <select id="auto-interval">
@@ -136,7 +146,7 @@
         <p id="auto-state" role="status">자동 수집 상태를 불러오고 있습니다.</p>
         <p id="auto-last"></p>
         <p class="hint">
-          X·Threads에 로그인된 상태여야 합니다. Chrome이 실행 중일 때만 동작하며, 수집한 항목은 위
+          X·Threads·YouTube에 로그인된 상태여야 합니다. Chrome이 실행 중일 때만 동작하며, 수집한 항목은 위
           자동 백업 설정에 따라 Obsidian으로 보냅니다. Obsidian이 꺼져 있으면 대기열에 보관했다가
           연결되면 저장하고, 연결이 1시간 넘게 끊기면 알림을 표시합니다.
         </p>

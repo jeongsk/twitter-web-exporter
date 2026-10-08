@@ -29,6 +29,7 @@ export type BackupConfig = {
   scope: BackupScope;
   destinationId: string;
   threadsEnabled?: boolean;
+  youtubeEnabled?: boolean;
 };
 export const DEFAULT_BACKUP: BackupConfig = {
   enabled: false,

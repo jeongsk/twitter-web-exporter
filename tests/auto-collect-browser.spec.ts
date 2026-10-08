@@ -137,6 +137,8 @@ test('periodic collection: inactive tabs, scroll until exhausted, stop at known 
     await settings.getByRole('button', { name: '연결 확인 · 저장', exact: true }).click();
     await expect(settings.locator('#connection-state')).toContainText('연결 설정 저장됨');
     await settings.locator('#enabled').check();
+    // Only sources whose backup is on are collected periodically.
+    await settings.locator('#threads-enabled').check();
     await settings.getByRole('button', { name: '백업 설정 적용', exact: true }).click();
     await expect(settings.locator('#counts')).toContainText('자동 백업 켜짐');
 

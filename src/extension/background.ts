@@ -1,5 +1,7 @@
 import { queueThreads } from '@/threads/queue';
 import { isThreadsPage } from '@/threads/model';
+import { queueYoutube } from '@/youtube/queue';
+import { isYoutubePage } from '@/youtube/model';
 import { queueThread } from '@/backup/thread-queue';
 import { BackupConnectionError } from '@/backup/connection-errors';
 import { BackupDatabase, type BackupJob } from '@/backup/queue';
@@ -55,6 +57,15 @@ function enqueueThreads(bundle: unknown) {
     return reply;
   });
 }
+/** Shares the Threads ingest chain so writes from every platform's list are serialized. */
+function enqueueYoutube(videos: unknown) {
+  const result = threadIngest.then(async () => queueYoutube(db, videos, await config()));
+  threadIngest = result.catch(() => {});
+  return result.then((reply) => {
+    void drain().catch(reportError);
+    return reply;
+  });
+}
 function enqueueThread(bundle: unknown) {
   const result = threadIngest.then(async () => queueThread(db, bundle, await config()));
   threadIngest = result.catch(() => {});
@@ -82,6 +93,7 @@ async function config(): Promise<BackupConfig> {
   return {
     enabled: value?.enabled === true,
     threadsEnabled: value?.threadsEnabled === true,
+    youtubeEnabled: value?.youtubeEnabled === true,
     scope: value?.scope === 'tweets' ? 'tweets' : 'bookmarks',
     destinationId: typeof value?.destinationId === 'string' ? value.destinationId : '',
   };
@@ -198,7 +210,9 @@ async function flush() {
           j.due <= Date.now() &&
           (j.platform === 'threads'
             ? cfg.threadsEnabled === true
-            : j.modules.some((m) => acceptsModule(cfg.scope, m))),
+            : j.platform === 'youtube'
+              ? cfg.youtubeEnabled === true
+              : j.modules.some((m) => acceptsModule(cfg.scope, m))),
       )
       .first();
     if (!job) return;
@@ -442,10 +456,17 @@ function startAutoCollect() {
     if (existing?.session) await closeUnlessViewed(existing.session.tabId);
     if (existing?.closing !== undefined) await closeUnlessViewed(existing.closing);
     const now = Date.now();
+    const cfg = await config();
+    // A source whose backup is off is skipped: its ids would otherwise be recorded as "known",
+    // and the first run after enabling it would stop before queueing anything.
     await openNextSource({
       startedAt: now,
       updatedAt: now,
-      queue: ['x', 'threads'],
+      queue: [
+        'x',
+        ...(cfg.threadsEnabled ? (['threads'] as const) : []),
+        ...(cfg.youtubeEnabled ? (['youtube'] as const) : []),
+      ],
       result: { startedAt: now, finishedAt: 0 },
     });
     return true;
@@ -511,7 +532,7 @@ async function replayTabs() {
         const reply = await chrome.tabs.sendMessage(tab.id, { type: 'TWE_BACKUP_REPLAY' });
         if (reply?.ok) contacted++;
       } catch {
-        /* Only X tabs have a receiver. No page content is sent to other tabs. */
+        /* Only X, Threads and YouTube tabs have a receiver. No page content goes elsewhere. */
       }
     }),
   );
@@ -539,11 +560,27 @@ function threadsSender(sender: chrome.runtime.MessageSender) {
     isThreadsPage(sender.url ?? '')
   );
 }
+function youtubeSender(sender: chrome.runtime.MessageSender) {
+  return (
+    sender.id === chrome.runtime.id &&
+    sender.tab?.id !== undefined &&
+    sender.frameId === 0 &&
+    isYoutubePage(sender.url ?? '')
+  );
+}
 async function handle(msg: Record<string, unknown>, sender: chrome.runtime.MessageSender) {
   const ui = ownUI(sender),
     content = xSender(sender),
-    threads = threadsSender(sender);
-  if (!ui && !content && !threads) throw new Error('허용되지 않은 백업 요청입니다.');
+    threads = threadsSender(sender),
+    youtube = youtubeSender(sender);
+  if (!ui && !content && !threads && !youtube) throw new Error('허용되지 않은 백업 요청입니다.');
+  const source: AutoPlatform | undefined = content
+    ? 'x'
+    : threads
+      ? 'threads'
+      : youtube
+        ? 'youtube'
+        : undefined;
   if (msg.type === 'TWE_BACKUP_CONFIG_GET') return { ok: true, config: await config() };
   if (msg.type === 'TWE_BACKUP_OPEN') {
     await chrome.runtime.openOptionsPage();
@@ -552,10 +589,9 @@ async function handle(msg: Record<string, unknown>, sender: chrome.runtime.Messa
   if (msg.type === 'TWE_BACKUP_ENQUEUE' && content) return enqueue(msg.module, msg.records);
   if (msg.type === 'TWE_BACKUP_THREAD' && content) return enqueueThread(msg.bundle);
   if (msg.type === 'TWE_BACKUP_THREADS' && threads) return enqueueThreads(msg.bundle);
-  if (msg.type === 'TWE_AUTO_HELLO' && (content || threads))
-    return autoHello(sender, content ? 'x' : 'threads');
-  if (msg.type === 'TWE_AUTO_STEP' && (content || threads))
-    return autoStepMessage(sender, content ? 'x' : 'threads', msg.ids);
+  if (msg.type === 'TWE_BACKUP_YOUTUBE' && youtube) return enqueueYoutube(msg.videos);
+  if (msg.type === 'TWE_AUTO_HELLO' && source) return autoHello(sender, source);
+  if (msg.type === 'TWE_AUTO_STEP' && source) return autoStepMessage(sender, source, msg.ids);
   if (!ui) throw new Error('백업 설정은 확장 프로그램 화면에서만 변경할 수 있습니다.');
   switch (msg.type) {
     case 'TWE_BACKUP_STATUS':
@@ -570,6 +606,8 @@ async function handle(msg: Record<string, unknown>, sender: chrome.runtime.Messa
       const cfg = await config();
       if (msg.threadsEnabled !== undefined && typeof msg.threadsEnabled !== 'boolean')
         throw new Error('Threads 백업 설정이 올바르지 않습니다.');
+      if (msg.youtubeEnabled !== undefined && typeof msg.youtubeEnabled !== 'boolean')
+        throw new Error('YouTube 백업 설정이 올바르지 않습니다.');
       if (msg.enabled && !cfg.destinationId) throw new Error('먼저 연결 확인을 실행하세요.');
       if (msg.enabled) await (await apiClient()).connect();
       await chrome.storage.local.set({
@@ -578,6 +616,7 @@ async function handle(msg: Record<string, unknown>, sender: chrome.runtime.Messa
           enabled: msg.enabled,
           scope: msg.scope,
           threadsEnabled: msg.threadsEnabled ?? cfg.threadsEnabled,
+          youtubeEnabled: msg.youtubeEnabled ?? cfg.youtubeEnabled,
         },
       });
       if (msg.enabled) {

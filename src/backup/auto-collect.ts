@@ -1,10 +1,13 @@
+import { YOUTUBE_LIKES } from '@/youtube/model';
+
 /** Periodic collection: the worker opens inactive tabs, content scripts scroll and report ids. */
-export type AutoPlatform = 'x' | 'threads';
+export type AutoPlatform = 'x' | 'threads' | 'youtube';
 export type AutoStopReason =
   'known' | 'exhausted' | 'empty' | 'limit' | 'timeout' | 'interrupted' | 'error';
 export const AUTO_SOURCES: Record<AutoPlatform, string> = {
   x: 'https://x.com/i/bookmarks',
   threads: 'https://www.threads.com/saved',
+  youtube: YOUTUBE_LIKES,
 };
 export const AUTO_INTERVALS = [0, 1, 3, 6, 12, 24] as const;
 export const DEFAULT_AUTO_INTERVAL = 3;
@@ -37,6 +40,7 @@ export interface AutoRunResult {
   finishedAt: number;
   x?: AutoPlatformResult;
   threads?: AutoPlatformResult;
+  youtube?: AutoPlatformResult;
 }
 
 export function normalizeInterval(value: unknown): number {
@@ -51,7 +55,7 @@ export function bookmarkIds(responseText: string): string[] {
 }
 
 /**
- * Ids already backed up from the same list. Only bookmark (or Threads saved) jobs count: a tweet
+ * Ids already backed up from the same list. Only bookmark (Threads saved, YouTube liked) jobs count: a tweet
  * saved earlier from a timeline under the "all posts" scope may be bookmarked later.
  */
 export function knownFromJobs(
@@ -72,6 +76,13 @@ export function knownFromJobs(
           new Uint8Array(parts[2]!.match(/../g)!.map((h) => parseInt(h, 16))),
         ),
       );
+    if (
+      platform === 'youtube' &&
+      modules.includes('YoutubeLikesModule') &&
+      parts[1] === 'youtube' &&
+      /^[\w-]{11}$/.test(parts[2] ?? '')
+    )
+      ids.push(parts[2]!);
     if (
       platform === 'x' &&
       modules.includes('BookmarksModule') &&
@@ -131,7 +142,7 @@ export function describeResult(result: AutoPlatformResult | undefined): string {
   return `새 항목 ${result.fresh}개 (${reason})`;
 }
 
-/** Shared by X and Threads content scripts: report ids, scroll, repeat until told to stop. */
+/** Shared by the X, Threads and YouTube content scripts: report ids, scroll, repeat until told to stop. */
 export async function runAutoCollect(
   send: (request: Record<string, unknown>) => Promise<{ auto?: boolean; continue?: boolean }>,
   collectIds: () => string[],

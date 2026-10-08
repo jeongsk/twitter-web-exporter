@@ -198,7 +198,10 @@ export class ObsidianRestClient {
       (job.platform === 'threads'
         ? front.includes('source_platform: "threads"') &&
           front.includes(`source_key: "threads-${job.id}"`)
-        : front.includes(`source_id: "${job.id}"`)) &&
+        : job.platform === 'youtube'
+          ? front.includes('source_platform: "youtube"') &&
+            front.includes(`source_key: "youtube-${job.id}"`)
+          : front.includes(`source_id: "${job.id}"`)) &&
       (await fingerprint(
         existing.slice(boundary + 5),
         job.kind === 'thread' ? MAX_THREAD_BYTES : 512 * 1024,
@@ -209,7 +212,9 @@ export class ObsidianRestClient {
     if (
       !(job.platform === 'threads'
         ? /^(?:[0-9a-f]{2}){1,32}$/.test(job.id)
-        : /^\d{1,30}$/.test(job.id)) ||
+        : job.platform === 'youtube'
+          ? /^[\w-]{11}$/.test(job.id)
+          : /^\d{1,30}$/.test(job.id)) ||
       !/^[a-f0-9]{64}$/.test(job.hash) ||
       typeof job.markdown !== 'string' ||
       new TextEncoder().encode(job.markdown).length >
@@ -219,9 +224,9 @@ export class ObsidianRestClient {
       throw new Error('백업 작업의 ID 또는 체크섬이 올바르지 않습니다.');
     if (job.target !== (await apiDestination(this.settings)))
       throw new Error('백업 저장 위치가 변경되었습니다.');
-    const folder =
-      job.platform === 'threads' ? `${this.settings.folder}/threads` : this.settings.folder;
-    const prefix = job.platform === 'threads' ? 'threads' : 'x';
+    // Threads/YouTube ids are [A-Za-z0-9_-] only, so they are safe path segments as-is.
+    const prefix = job.platform ?? 'x';
+    const folder = job.platform ? `${this.settings.folder}/${job.platform}` : this.settings.folder;
     const base = `${folder}/${prefix}-${job.id}.md`;
     const old = await this.request(this.fileUrl(base));
     if (old !== null && (await this.matches(old, job)))

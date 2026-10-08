@@ -7,7 +7,7 @@ export interface BackupJob {
   id: string;
   hash: string;
   kind?: 'thread';
-  platform?: 'threads';
+  platform?: 'threads' | 'youtube';
   replyCount?: number;
   markdown?: string;
   state: 'pending' | 'done';

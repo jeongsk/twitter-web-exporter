@@ -49,9 +49,14 @@ test('Manifest V3 package is self-contained with narrow permissions', () => {
     'ISOLATED',
     'MAIN',
     'ISOLATED',
+    'ISOLATED',
   ]);
   for (const s of manifest.content_scripts) {
-    expect(s.run_at).toBe(s.js.includes('threads-content.js') ? 'document_idle' : 'document_start');
+    expect(s.run_at).toBe(
+      s.js.includes('threads-content.js') || s.js.includes('youtube-content.js')
+        ? 'document_idle'
+        : 'document_start',
+    );
     expect(s.matches).not.toContain('<all_urls>');
     for (const file of [...s.js, ...(s.css ?? [])])
       expect(existsSync(resolve(dir, file))).toBe(true);

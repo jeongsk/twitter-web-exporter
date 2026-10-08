@@ -1,4 +1,5 @@
 import { isThreadsPage, THREADS_SAVED } from '@/threads/model';
+import { YOUTUBE_LIKES } from '@/youtube/model';
 import { isXPage } from './protocol';
 import type { MenuAction } from '@/platform/types';
 
@@ -70,4 +71,8 @@ document.getElementById('backup')!.addEventListener('click', () => {
 
 document.getElementById('threads-saved')!.addEventListener('click', () => {
   void chrome.tabs.create({ url: THREADS_SAVED });
+});
+
+document.getElementById('youtube-likes')!.addEventListener('click', () => {
+  void chrome.tabs.create({ url: YOUTUBE_LIKES });
 });

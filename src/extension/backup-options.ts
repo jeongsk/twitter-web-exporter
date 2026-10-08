@@ -88,6 +88,7 @@ function show(status: BackupStatus, populate = false) {
     field('scope').value = status.config.scope;
     field('enabled').checked = status.config.enabled;
     field('threads-enabled').checked = status.config.threadsEnabled === true;
+    field('youtube-enabled').checked = status.config.youtubeEnabled === true;
     field('api-key').placeholder = status.api.hasApiKey
       ? '저장된 키 사용 (변경 시 새 키 입력)'
       : 'Obsidian 설정에서 복사한 API 키';
@@ -121,7 +122,12 @@ function show(status: BackupStatus, populate = false) {
 const time = (value: number) => new Date(value).toLocaleString('ko-KR');
 function showAuto(auto: BackupStatus['autoCollect'], populate: boolean) {
   if (populate) intervalField.value = String(auto.intervalHours);
-  const running = { x: 'X 북마크', threads: 'Threads 저장 목록', starting: '준비' }[auto.running];
+  const running = {
+    x: 'X 북마크',
+    threads: 'Threads 저장 목록',
+    youtube: 'YouTube 좋아요',
+    starting: '준비',
+  }[auto.running];
   message(
     'auto-state',
     running
@@ -134,7 +140,7 @@ function showAuto(auto: BackupStatus['autoCollect'], populate: boolean) {
   message(
     'auto-last',
     last
-      ? `최근 수집 ${time(last.finishedAt || last.startedAt)} · X ${describeResult(last.x)} · Threads ${describeResult(last.threads)}`
+      ? `최근 수집 ${time(last.finishedAt || last.startedAt)} · X ${describeResult(last.x)} · Threads ${describeResult(last.threads)} · YouTube ${describeResult(last.youtube)}`
       : '아직 자동 수집을 실행하지 않았습니다.',
   );
 }
@@ -184,6 +190,7 @@ for (const id of [
   'enabled',
   'privacy',
   'threads-enabled',
+  'youtube-enabled',
 ]) {
   field(id).addEventListener('input', () => {
     dirty = true;
@@ -256,6 +263,7 @@ document.getElementById('apply')!.addEventListener(
           enabled: field('enabled').checked,
           scope: field('scope').value,
           threadsEnabled: field('threads-enabled').checked,
+          youtubeEnabled: field('youtube-enabled').checked,
         }),
         true,
       );
@@ -291,7 +299,13 @@ document.getElementById('collect-now')!.addEventListener(
   () =>
     void perform('queue', async () => {
       show(await send({ type: 'TWE_AUTO_COLLECT_NOW' }));
-      showNotice('X 북마크와 Threads 저장 목록을 비활성 탭에서 수집하고 있습니다.');
+      const cfg = lastStatus?.config;
+      const sources = [
+        'X 북마크',
+        ...(cfg?.threadsEnabled ? ['Threads 저장 목록'] : []),
+        ...(cfg?.youtubeEnabled ? ['YouTube 좋아요'] : []),
+      ];
+      showNotice(`${sources.join('·')}을(를) 비활성 탭에서 수집하고 있습니다.`);
     }),
 );
 for (const [id, verify] of [
@@ -305,8 +319,8 @@ for (const [id, verify] of [
         const reply = await send({ type: 'TWE_BACKUP_RESCAN', verify });
         showNotice(
           reply.tabs
-            ? `${reply.tabs}개 X·Threads 탭의 기존 데이터를 확인하고 있습니다.`
-            : 'X 또는 Threads 저장 목록 탭을 열고 새로고침한 뒤 다시 실행하세요.',
+            ? `${reply.tabs}개 X·Threads·YouTube 탭의 기존 데이터를 확인하고 있습니다.`
+            : 'X·Threads 저장 목록 또는 YouTube 좋아요 탭을 열고 새로고침한 뒤 다시 실행하세요.',
         );
       }),
   );

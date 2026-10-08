@@ -22,6 +22,7 @@ for (const [index, entry] of [
   'background',
   'backup-options',
   'threads-content',
+  'youtube-content',
 ].entries()) {
   await build({
     root,
@@ -70,8 +71,9 @@ const manifest = {
   manifest_version: 3,
   name: 'Twitter Web Exporter',
   version: pkg.version,
-  version_name: `${pkg.version}-chrome.9`,
-  description: 'X 북마크와 Threads 저장 게시물을 수집하고 Obsidian 볼트로 자동 백업합니다.',
+  version_name: `${pkg.version}-chrome.10`,
+  description:
+    'X 북마크, Threads 저장 게시물, YouTube 좋아요 영상을 수집하고 Obsidian 볼트로 자동 백업합니다.',
   minimum_chrome_version: '111',
   permissions: ['activeTab', 'storage', 'alarms', 'notifications'],
   optional_host_permissions: [
@@ -100,6 +102,12 @@ const manifest = {
       ],
       js: ['threads-content.js'],
       css: ['app.css'],
+      run_at: 'document_idle',
+      world: 'ISOLATED',
+    },
+    {
+      matches: ['https://www.youtube.com/*', 'https://youtube.com/*', 'https://m.youtube.com/*'],
+      js: ['youtube-content.js'],
       run_at: 'document_idle',
       world: 'ISOLATED',
     },

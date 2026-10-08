@@ -74,8 +74,9 @@ raw/articles/twitter-web-exporter/
 ## 주기 자동 수집 — 2026-10-07
 
 - 설정 페이지 「3. 자동 수집」에서 주기(끄기·1·3·6·12·24시간, 기본 3시간)를 고르고 「지금 수집」으로 즉시 실행할 수 있다.
-- 주기마다 `chrome.alarms`(`twe-auto-collect`)가 `https://x.com/i/bookmarks`와 `https://www.threads.com/saved`를 차례로 비활성 탭으로 연다.
-- 탭의 content script가 2.5초 간격으로 항목 id를 worker에 보고하고 페이지 끝으로 스크롤한다. X는 `Bookmarks` 응답의 `tweet-<id>` 항목을, Threads는 화면의 게시물 코드를 쓴다.
+- 주기마다 `chrome.alarms`(`twe-auto-collect`)가 `https://x.com/i/bookmarks`, `https://www.threads.com/saved`, `https://www.youtube.com/playlist?list=LL`(YouTube 좋아요)을 차례로 비활성 탭으로 연다.
+- Threads·YouTube 목록은 각 백업 체크박스가 켜져 있을 때만 연다(chrome.10부터). 꺼진 목록을 열면 그 id가 「이미 본 항목」으로 기록되어, 나중에 백업을 켰을 때 첫 수집이 곧바로 멈추기 때문이다. 결과에는 「실행 안 함」으로 표시한다.
+- 탭의 content script가 2.5초 간격으로 항목 id를 worker에 보고하고 페이지 끝으로 스크롤한다. X는 `Bookmarks` 응답의 `tweet-<id>` 항목을, Threads는 화면의 게시물 코드를, YouTube는 11자 영상 ID를 쓴다.
 - 다음 중 하나가 되면 멈추고, 저장 중인 요청을 위해 4초 기다린 뒤 탭을 닫는다.
   - 이전 실행에서 본 id나 백업 대기열에 있던 id가 나옴(탭을 열기 직전 스냅샷 기준)
   - 첫 id가 나온 뒤 연속 3회 새 id 없음
@@ -146,3 +147,9 @@ Chrome `1.4.3-chrome.6`에 Threads /saved 자동 백업을 추가했다.
 별도 Threads 체크박스를 켜면 기존 Obsidian 연결을 재사용해 `threads/`에 분리 저장한다.
 전체 39개 테스트 및 두 빌드·배포 ZIP 검증 통과. 사용 범위·제약은 `docs/THREADS-BACKUP.md` 참고.
 실사용 Threads 계정과 볼트 파일에는 접근하거나 쓰지 않았다.
+
+## YouTube 좋아요 영상 지원 — 2026-10-08
+
+Chrome `1.4.3-chrome.10`에 YouTube 좋아요 목록(`playlist?list=LL`) 자동 백업을 추가했다.
+`YouTube 좋아요 영상도 자동 백업` 체크박스(기본 꺼짐)를 켜면 기존 Obsidian 연결을 재사용해 `youtube/`에 분리 저장한다.
+영상 파일이 아닌 제목·채널·길이·링크 메타데이터만 저장한다. 사용 범위·제약은 `docs/YOUTUBE-BACKUP.md` 참고.
