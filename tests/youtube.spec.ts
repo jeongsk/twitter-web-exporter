@@ -204,6 +204,27 @@ test.describe('YouTube Liked videos DOM', () => {
     });
   });
 
+  test('collaboration videos keep plain-text channel names without a URL', async () => {
+    // Structure copied from the live Liked videos page (2026-10): the names are not links.
+    const html = `<!DOCTYPE html><html><body><ytd-browse page-subtype="playlist"><div id="contents">
+      <yt-lockup-view-model><div>
+        <a href="/watch?v=Col0000000A&amp;list=LL&amp;index=87"><badge-shape><div>3:21</div></badge-shape></a>
+        <h3 title="Collab title"><a href="/watch?v=Col0000000A&amp;list=LL&amp;index=87">Collab title</a></h3>
+        <yt-content-metadata-view-model>
+          <div class="ytContentMetadataViewModelMetadataRow"><span class="ytAttributedStringHost ytContentMetadataViewModelMetadataText">First Channel</span><span class="ytIconWrapperHost ytContentMetadataViewModelIcon"><span class="yt-icon-shape"></span></span><span class="ytContentMetadataViewModelDelimiter"> • </span><span class="ytAttributedStringHost ytContentMetadataViewModelMetadataText">및 Second Channel</span></div>
+          <div class="ytContentMetadataViewModelMetadataRow"><span class="ytAttributedStringHost ytContentMetadataViewModelMetadataText">7.4천</span><span class="ytContentMetadataViewModelDelimiter"> • </span><span class="ytAttributedStringHost ytContentMetadataViewModelMetadataText">2년 전</span></div>
+        </yt-content-metadata-view-model>
+      </div></yt-lockup-view-model>
+    </div></ytd-browse></body></html>`;
+    await inspect(html, async (page) => {
+      const result = await extract(page);
+      expect(result.skipped).toBe(0);
+      expect(
+        result.videos.map((v) => [v.id, v.title, v.channel, v.channelUrl, v.duration]),
+      ).toEqual([['Col0000000A', 'Collab title', 'First Channel 및 Second Channel', '', '3:21']]);
+    });
+  });
+
   test('unknown layouts fall back to Liked-videos links', async () => {
     const card = (id: string, title: string) => `
       <div class="card"><a href="/watch?v=${id}&amp;list=LL&amp;index=2"><img alt=""><span>7:00</span></a>

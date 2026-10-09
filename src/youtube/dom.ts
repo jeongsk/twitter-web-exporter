@@ -69,6 +69,21 @@ function channelLink(scope: Element): { channel: string; channelUrl: string } | 
   }
   return null;
 }
+/**
+ * Collaboration videos list several channels as plain text in the first metadata row (the names
+ * open a chooser instead of linking), e.g. "A", verified icon, "및 B". Keep the names without a URL.
+ */
+function plainChannel(scope: Element): { channel: string; channelUrl: string } | null {
+  const row = scope.querySelector('yt-content-metadata-view-model')?.firstElementChild;
+  if (!row || row.querySelector('a[href]')) return null;
+  const channel = clean(
+    [...row.children]
+      .filter((part) => !/icon|delimiter/i.test(part.className))
+      .map((part) => clean(part.textContent))
+      .join(' '),
+  );
+  return channel ? { channel, channelUrl: '' } : null;
+}
 function duration(scope: Element): string {
   const badges = scope.querySelectorAll(
     '#text.ytd-thumbnail-overlay-time-status-renderer, ytd-thumbnail-overlay-time-status-renderer, yt-thumbnail-badge-view-model badge-shape, badge-shape',
@@ -87,7 +102,7 @@ function titleOf(row: Element): string {
 }
 function build(id: string, title: string, scope: Element): YoutubeVideo | null {
   if (!title || PLACEHOLDER.test(title)) return null;
-  const owner = channelLink(scope);
+  const owner = channelLink(scope) ?? plainChannel(scope);
   if (!owner) return null;
   const video: YoutubeVideo = {
     id,
