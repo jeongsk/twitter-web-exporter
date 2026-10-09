@@ -142,10 +142,14 @@ export function describeResult(result: AutoPlatformResult | undefined): string {
   return `새 항목 ${result.fresh}개 (${reason})`;
 }
 
-/** Shared by the X, Threads and YouTube content scripts: report ids, scroll, repeat until told to stop. */
+/**
+ * Shared by the X, Threads and YouTube content scripts: report ids, scroll, repeat until told to stop.
+ * `advance` runs after each scroll for lists whose own lazy loading never fires in a hidden tab.
+ */
 export async function runAutoCollect(
   send: (request: Record<string, unknown>) => Promise<{ auto?: boolean; continue?: boolean }>,
   collectIds: () => string[],
+  advance?: () => void,
 ) {
   const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
   if (!(await send({ type: 'TWE_AUTO_HELLO' })).auto) return;
@@ -157,6 +161,7 @@ export async function runAutoCollect(
     window.scrollTo(0, root.scrollHeight);
     // Hidden tabs skip rendering steps, so dispatch the event lazy lists listen to directly.
     window.dispatchEvent(new Event('scroll'));
+    advance?.();
     await sleep(AUTO_STEP_DELAY);
   }
 }

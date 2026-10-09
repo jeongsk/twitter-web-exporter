@@ -11,8 +11,45 @@ import {
   youtubeUrl,
   type YoutubeVideo,
 } from '../src/youtube/model';
+import { lastContinuation } from '../src/youtube/continuation';
 
 test.describe('YouTube model', () => {
+  test('lastContinuation finds the last load-more command in either layout', () => {
+    const lockupCommand = { continuationCommand: { token: 'B' } };
+    const actions = [
+      {
+        appendContinuationItemsAction: {
+          continuationItems: [
+            { lockupViewModel: {} },
+            {
+              continuationItemViewModel: {
+                continuationCommand: { innertubeCommand: { continuationCommand: { token: 'A' } } },
+              },
+            },
+            {
+              continuationItemViewModel: {
+                continuationCommand: { innertubeCommand: lockupCommand },
+              },
+            },
+          ],
+        },
+      },
+    ];
+    expect(lastContinuation(actions)).toBe(lockupCommand);
+    const endpoint = { continuationCommand: { token: 'C' } };
+    expect(
+      lastContinuation({
+        contents: [{ continuationItemRenderer: { continuationEndpoint: endpoint } }],
+      }),
+    ).toBe(endpoint);
+    expect(
+      lastContinuation([
+        { appendContinuationItemsAction: { continuationItems: [{ lockupViewModel: {} }] } },
+      ]),
+    ).toBeNull();
+    expect(lastContinuation(null)).toBeNull();
+  });
+
   test('parseYoutubeVideo accepts watch, shorts and youtu.be links only', () => {
     expect(parseYoutubeVideo('https://www.youtube.com/watch?v=Abc123_-xyZ&list=LL&index=3')).toBe(
       'Abc123_-xyZ',

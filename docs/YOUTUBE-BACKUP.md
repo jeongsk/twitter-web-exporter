@@ -62,7 +62,9 @@ YouTube 백업이 켜져 있을 때만 「3. 자동 수집」이 X 북마크·Th
 
 - 메타데이터만 저장한다. 영상·음성 파일, 자막, 설명, 댓글은 저장하지 않는다.
 - 좋아요를 누른 날짜는 YouTube가 목록에 표시하지 않아 기록하지 않는다. `ingested`는 볼트에 저장한 날짜다.
-- 화면에 로드된 카드만 읽는다. 주기 수집의 비활성 탭에서는 YouTube가 다음 목록을 불러오지 않아 최근 좋아요 100개까지만 보인다(2026-10-09 실제 페이지에서 확인). 이후 실행은 새 좋아요만 가져오면 되므로 수집 간격 사이에 100개 넘게 누르지 않는 한 영향이 없다. 그보다 오래된 좋아요는 처음 한 번 목록을 직접 열어 끝까지 스크롤해서 저장한다.
+- 화면에 로드된 카드만 읽는다. 비활성 탭에서는 목록 끝의 「더 불러오기」 항목이 화면에 보이지 않아 YouTube가 다음 100개를 요청하지 않는다. 그래서 주기 수집 중에만 MAIN world 스크립트(`youtube-page.ts`)가 YouTube 자신의 continuation 명령을 `ytd-app.resolveCommand`로 실행한다. 요청과 렌더링은 YouTube가 직접 하고, 다음 명령은 그 응답(`onResponseReceivedActions`)에서 읽는다. 확장 프로그램이 YouTube API를 직접 호출하지는 않는다. 2026-10-09 실제 페이지의 비활성 탭에서 좋아요 100개를 넘어 목록 끝까지 불러오는 것을 확인했다.
+- `resolveCommand`는 공개 API가 아니다. YouTube가 이를 없애면 예전처럼 최근 100개까지만 수집된다. 이때는 목록을 직접 열어 끝까지 스크롤하면 저장된다.
+- 한 번 실행할 때 3분, 스크롤 30번까지만 진행한다. 한 번에 약 3,000개까지 불러올 수 있으며, 그보다 많으면 다음 실행에서 이어지지 않으므로 직접 스크롤한다.
 - YouTube DOM 구조에 의존한다. YouTube 화면이 바뀌면 일부 항목이나 길이·채널 정보가 빠질 수 있다.
 - 삭제·비공개 처리된 영상은 목록에서 숨겨지거나 제목을 읽을 수 없어 저장하지 않을 수 있다.
 - 썸네일·영상 링크는 YouTube 서버에 있다. 원본이 삭제되면 임베드와 썸네일이 열리지 않는다.
@@ -71,5 +73,5 @@ YouTube 백업이 켜져 있을 때만 「3. 자동 수집」이 X 북마크·Th
 API 키는 기존 trusted extension storage만 사용한다. YouTube 콘텐츠 스크립트에는 키 조회·설정 변경 권한이 없다.
 볼트의 Git·클라우드 동기화 제외 규칙은 변경하지 않았다. `youtube/` 하위 폴더도 비공개 범위를 확인해야 한다.
 
-실행 코드: `src/youtube/`, `src/extension/youtube-content.ts`.
-테스트: `tests/youtube-backup.spec.ts`, `tests/youtube.spec.ts`.
+실행 코드: `src/youtube/`, `src/extension/youtube-content.ts`, `src/extension/youtube-page.ts`.
+테스트: `tests/youtube-backup.spec.ts`, `tests/youtube.spec.ts`, `tests/youtube-auto-collect.spec.ts`.

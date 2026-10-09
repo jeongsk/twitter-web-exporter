@@ -4,6 +4,7 @@ import { withTimeout } from '@/backup/connection-errors';
 import { runAutoCollect } from '@/backup/auto-collect';
 import { extractYoutubeLikes } from '@/youtube/dom';
 import { isYoutubeLikes, type YoutubeVideo } from '@/youtube/model';
+import { YOUTUBE_CHANNEL } from '@/youtube/continuation';
 
 const CHUNK = 100;
 /** id -> JSON of the last version the worker accepted; a changed row is sent again. */
@@ -134,5 +135,7 @@ setTimeout(() => {
       collect();
       return [...seen];
     },
+    // Hidden tabs stop at the first 100 likes; youtube-page asks YouTube for the next page.
+    () => window.postMessage({ channel: YOUTUBE_CHANNEL, type: 'more' }, location.origin),
   ).catch((reason: unknown) => logger.warn('YouTube 자동 수집 중단', reason));
 }, 1500);

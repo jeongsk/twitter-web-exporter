@@ -50,7 +50,12 @@ test('Manifest V3 package is self-contained with narrow permissions', () => {
     'MAIN',
     'ISOLATED',
     'ISOLATED',
+    'MAIN',
   ]);
+  // The YouTube MAIN-world script only hands YouTube its own command; no extension APIs.
+  expect(readFileSync(resolve(dir, 'youtube-page.js'), 'utf8')).not.toMatch(
+    /chrome\.(?:runtime|storage)/,
+  );
   for (const s of manifest.content_scripts) {
     expect(s.run_at).toBe(
       s.js.includes('threads-content.js') || s.js.includes('youtube-content.js')
