@@ -19,6 +19,23 @@ export type ThreadsPost = {
   replyTo?: string;
 };
 export type ThreadsBundle = { root: ThreadsPost; replies: ThreadsPost[]; limited: boolean };
+/**
+ * Meta CDN media URLs are re-signed on every page load (oh, oe, _nc_gid) and may point at another
+ * size variant (stp) or edge host, so the same file is identified by its file name, or by the
+ * proxied source for external link previews. Other URLs are their own identity.
+ */
+export function threadsMediaKey(value: string): string {
+  try {
+    const url = new URL(value);
+    if (!/(?:^|\.)(?:cdninstagram\.com|fbcdn\.net)$/.test(url.hostname)) return value;
+    return url.searchParams.get('url') || url.pathname.split('/').pop() || value;
+  } catch {
+    return value;
+  }
+}
+const uniqueMedia = (media: ThreadsPost['media']) => [
+  ...new Map(media.map((m) => [threadsMediaKey(m.url), m])).values(),
+];
 export function isThreadsPage(value: string): boolean {
   try {
     const u = new URL(value);
@@ -145,6 +162,6 @@ export function mergeThreadsPost(old: ThreadsPost | undefined, next: ThreadsPost
     text: richer ? old.text : next.text,
     truncated: richer ? old.truncated : next.truncated,
     links: [...new Set([...old.links, ...next.links])].slice(0, 100),
-    media: [...new Map([...old.media, ...next.media].map((m) => [m.url, m])).values()].slice(0, 32),
+    media: uniqueMedia([...old.media, ...next.media]).slice(0, 32),
   };
 }

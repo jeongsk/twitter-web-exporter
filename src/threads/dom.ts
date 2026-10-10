@@ -1,5 +1,11 @@
 import { safeWebUrl } from '@/backup/format';
-import { isThreadsPost, parseThreadsPost, isThreadsPage, type ThreadsPost } from './model';
+import {
+  isThreadsPost,
+  parseThreadsPost,
+  isThreadsPage,
+  threadsMediaKey,
+  type ThreadsPost,
+} from './model';
 
 // Independent implementation informed by threadmark's [dir=auto] and sibling-media findings.
 const ARTICLE = 'article, [role="article"]';
@@ -107,7 +113,7 @@ function mediaParts(card: Element, base: string): ThreadsPost['media'] {
     const src = el.currentSrc || el.src;
     if (safeWebUrl(src)) result.push({ type: image ? 'photo' : 'video', url: src, alt });
   }
-  return [...new Map(result.map((m) => [m.url, m])).values()];
+  return [...new Map(result.map((m) => [threadsMediaKey(m.url), m])).values()];
 }
 function findCard(anchor: HTMLAnchorElement, base: string): Element | null {
   const expected = parseThreadsPost(anchor.href, base);

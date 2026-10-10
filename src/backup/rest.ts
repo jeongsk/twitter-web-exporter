@@ -2,6 +2,7 @@ import { MAX_THREAD_BYTES } from './types';
 import { BackupConnectionError } from './connection-errors';
 import { fingerprint } from './format';
 import type { BackupJob } from './queue';
+import { threadsFingerprint } from '@/threads/format';
 
 export type ApiSettings = { endpoint: string; apiKey: string; folder: string };
 export const DEFAULT_ENDPOINT = 'https://127.0.0.1:27124';
@@ -202,10 +203,12 @@ export class ObsidianRestClient {
           ? front.includes('source_platform: "youtube"') &&
             front.includes(`source_key: "youtube-${job.id}"`)
           : front.includes(`source_id: "${job.id}"`)) &&
-      (await fingerprint(
-        existing.slice(boundary + 5),
-        job.kind === 'thread' ? MAX_THREAD_BYTES : 512 * 1024,
-      )) === job.hash
+      (await (job.platform === 'threads'
+        ? threadsFingerprint(existing.slice(boundary + 5))
+        : fingerprint(
+            existing.slice(boundary + 5),
+            job.kind === 'thread' ? MAX_THREAD_BYTES : 512 * 1024,
+          ))) === job.hash
     );
   }
   async write(job: BackupJob) {

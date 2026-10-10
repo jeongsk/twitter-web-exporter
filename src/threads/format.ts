@@ -3,6 +3,7 @@ import { MAX_THREAD_BYTES } from '@/backup/types';
 import {
   isThreadsBundle,
   orderedReplies,
+  threadsMediaKey,
   threadsStorageId,
   type ThreadsPost,
   type ThreadsBundle,
@@ -39,6 +40,17 @@ function body(post: ThreadsPost): string {
     );
   return parts.join('\n');
 }
+const MEDIA_LINE = /^(\[(?:사진|동영상) \d+\]\(<)([^>\n]+)(>\))$/gm;
+/**
+ * The fingerprint of a note body. Media links are reduced to their stable identity, because Meta
+ * re-signs CDN URLs on every load and an unchanged post must not become a revision.
+ */
+export async function threadsFingerprint(body: string): Promise<string> {
+  return fingerprint(
+    body.replace(MEDIA_LINE, (_, open, url, close) => open + threadsMediaKey(url) + close),
+    MAX_THREAD_BYTES,
+  );
+}
 export async function renderThreadsNote(bundle: ThreadsBundle, now = new Date()) {
   if (!isThreadsBundle(bundle)) throw new Error('Threads 북마크 묶음 형식이 올바르지 않습니다.');
   const replies = orderedReplies(bundle.root, bundle.replies);
@@ -63,7 +75,7 @@ export async function renderThreadsNote(bundle: ThreadsBundle, now = new Date())
       body(post),
     );
   const content = parts.join('\n').trimEnd() + '\n';
-  const hash = await fingerprint(content, MAX_THREAD_BYTES);
+  const hash = await threadsFingerprint(content);
   const id = threadsStorageId(bundle.root.code);
   const properties = {
     title: `Threads · @${bundle.root.author} · ${bundle.root.code}`,
